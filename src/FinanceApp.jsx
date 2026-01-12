@@ -47,8 +47,8 @@ const DEFAULT_CATEGORIES = [
   "Outros",
 ];
 
-// Você pode editar/expandir isso depois:
-const DEFAULT_CARDS = ["Nubank", "Inter", "C6", "Itaú", "Santander", "Outro"];
+// sugestões (apenas para autocomplete)
+const CARD_SUGGESTIONS = ["Nubank", "Inter", "C6", "Itaú", "Santander", "Banco do Brasil", "Caixa"];
 
 function pad2(n) {
   return String(n).padStart(2, "0");
@@ -70,8 +70,6 @@ function ymd(dateObj) {
 function uid() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
-
-/* ===================== TABS ===================== */
 
 const TAB = {
   LANCAMENTOS: "lancamentos",
@@ -132,9 +130,9 @@ export default function FinanceApp() {
   const [note, setNote] = useState("");
   const [dueDay, setDueDay] = useState(10);
 
-  // ===== NOVO: cartão/pessoa =====
+  // ===== Cartão/Pessoa =====
   const [isCardPurchase, setIsCardPurchase] = useState(false);
-  const [cardName, setCardName] = useState(DEFAULT_CARDS[0]);
+  const [cardName, setCardName] = useState(""); // ✅ agora é digitável e começa vazio
   const [personName, setPersonName] = useState("");
 
   // Parcelamento
@@ -146,13 +144,10 @@ export default function FinanceApp() {
   const [selectedCategory, setSelectedCategory] = useState(null);
 
   // Aba Cartões
-  const [selectedCardTab, setSelectedCardTab] = useState(""); // nome do cartão
-  const [personFilter, setPersonFilter] = useState(""); // filtro por pessoa dentro de cartão
+  const [selectedCardTab, setSelectedCardTab] = useState("");
+  const [personFilter, setPersonFilter] = useState("");
 
-  const dueDatePreview = useMemo(() => {
-    const d = safeDate(year, monthIndex, Number(dueDay));
-    return d;
-  }, [year, monthIndex, dueDay]);
+  const dueDatePreview = useMemo(() => safeDate(year, monthIndex, Number(dueDay)), [year, monthIndex, dueDay]);
 
   const daysOptions = useMemo(() => {
     const dim = daysInMonth(year, monthIndex);
@@ -181,7 +176,6 @@ export default function FinanceApp() {
 
   /* ===================== FILTROS BASE ===================== */
 
-  // Itens do mês (base)
   const itemsThisMonthBase = useMemo(() => {
     return items.filter((it) => {
       const d = new Date(it.dueDate);
@@ -189,20 +183,12 @@ export default function FinanceApp() {
     });
   }, [items, year, monthIndex]);
 
-  // Itens do mês (com filtros)
   const itemsThisMonth = useMemo(() => {
-    let list = [...itemsThisMonthBase].sort(
-      (a, b) => new Date(a.dueDate) - new Date(b.dueDate)
-    );
-
-    if (onlyOpenInstallments) {
-      list = list.filter((it) => it.installment && !it.paid);
-    }
-
+    let list = [...itemsThisMonthBase].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    if (onlyOpenInstallments) list = list.filter((it) => it.installment && !it.paid);
     return list;
   }, [itemsThisMonthBase, onlyOpenInstallments]);
 
-  // Totais do mês (sempre com base SEM filtro)
   const totals = useMemo(() => {
     let income = 0;
     let expense = 0;
@@ -214,7 +200,6 @@ export default function FinanceApp() {
     return { income, expense, balance: income - expense };
   }, [itemsThisMonthBase]);
 
-  // Pagas x Em aberto (do mês, só despesas)
   const paidOpenStats = useMemo(() => {
     const expenses = itemsThisMonthBase.filter((x) => x.type === "expense");
     const paid = expenses.filter((x) => !!x.paid).length;
@@ -224,10 +209,7 @@ export default function FinanceApp() {
 
   /* ===================== DATASETS GRÁFICOS ===================== */
 
-  const expensesThisMonth = useMemo(
-    () => itemsThisMonthBase.filter((it) => it.type === "expense"),
-    [itemsThisMonthBase]
-  );
+  const expensesThisMonth = useMemo(() => itemsThisMonthBase.filter((it) => it.type === "expense"), [itemsThisMonthBase]);
 
   const expenseByCategory = useMemo(() => {
     const map = new Map();
@@ -274,9 +256,14 @@ export default function FinanceApp() {
 
     const baseDue = safeDate(year, monthIndex, Number(dueDay));
 
-    // Normaliza pessoa: se não preencher, fica ""
     const pName = (personName || "").trim();
     const cName = isCardPurchase ? (cardName || "").trim() : "";
+
+    // ✅ obrigatório se marcou compra no cartão
+    if (isCardPurchase && !cName) {
+      alert("Digite o nome do banco do cartão (ex: Nubank, Inter, Itaú).");
+      return;
+    }
 
     if (!isInstallment) {
       await addDocItem({
@@ -290,10 +277,10 @@ export default function FinanceApp() {
         createdAt: new Date().toISOString(),
         userEmail,
 
-        // ===== NOVO =====
+        // cartão/pessoa
         isCardPurchase: Boolean(isCardPurchase),
         cardName: cName,
-        personName: pName, // opcional
+        personName: pName,
       });
     } else {
       const total = Math.max(2, Math.min(48, Number(installments || 2)));
@@ -313,10 +300,10 @@ export default function FinanceApp() {
           createdAt: new Date().toISOString(),
           userEmail,
 
-          // ===== NOVO =====
+          // cartão/pessoa
           isCardPurchase: Boolean(isCardPurchase),
           cardName: cName,
-          personName: pName, // opcional
+          personName: pName,
         });
       }
     }
@@ -330,6 +317,7 @@ export default function FinanceApp() {
 
     // reset cartão/pessoa
     setIsCardPurchase(false);
+    setCardName(""); // ✅ não volta "Outro"
     setPersonName("");
   }
 
@@ -348,20 +336,14 @@ export default function FinanceApp() {
   async function removeInstallmentGroup(groupId) {
     if (!userUid) return;
     const groupItems = items.filter((it) => it.installment?.groupId === groupId);
-    await Promise.all(
-      groupItems.map((it) =>
-        deleteDoc(doc(db, "users", userUid, "transactions", it.id))
-      )
-    );
+    await Promise.all(groupItems.map((it) => deleteDoc(doc(db, "users", userUid, "transactions", it.id))));
   }
 
   async function markInstallmentGroupPaid(groupId) {
     if (!userUid) return;
     const groupItems = items.filter((it) => it.installment?.groupId === groupId);
     await Promise.all(
-      groupItems.map((it) =>
-        updateDoc(doc(db, "users", userUid, "transactions", it.id), { paid: true })
-      )
+      groupItems.map((it) => updateDoc(doc(db, "users", userUid, "transactions", it.id), { paid: true }))
     );
   }
 
@@ -369,64 +351,54 @@ export default function FinanceApp() {
     if (!userUid) return;
     const list = itemsThisMonthBase.filter((it) => it.installment && !it.paid);
     if (list.length === 0) return;
-    await Promise.all(
-      list.map((it) =>
-        updateDoc(doc(db, "users", userUid, "transactions", it.id), { paid: true })
-      )
-    );
+    await Promise.all(list.map((it) => updateDoc(doc(db, "users", userUid, "transactions", it.id), { paid: true })));
   }
 
-  /* ===================== ABA CARTÕES (NOVO) ===================== */
+  /* ===================== ABA CARTÕES ===================== */
 
-  // cartões presentes no Firestore (do usuário)
+  // ✅ subabas vêm do Firestore (cardName digitado)
   const cardsFound = useMemo(() => {
     const s = new Set();
     for (const it of items) {
-      if (it.isCardPurchase && it.cardName) s.add(it.cardName);
+      if (it.isCardPurchase && (it.cardName || "").trim()) s.add(it.cardName.trim());
     }
-    // se não tiver nenhum, pelo menos mostra os padrões
-    const arr = Array.from(s);
-    if (arr.length === 0) return DEFAULT_CARDS;
-    return arr.sort((a, b) => a.localeCompare(b));
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [items]);
 
-  // garante ter um cartão selecionado ao entrar na aba
+  // sugestões (autocomplete) = padrões + já usados
+  const cardsSuggestions = useMemo(() => {
+    const s = new Set([...(CARD_SUGGESTIONS || [])]);
+    for (const c of cardsFound) s.add(c);
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [cardsFound]);
+
+  // ao entrar na aba cartões, seleciona o primeiro
   useEffect(() => {
     if (activeTab !== TAB.CARTOES) return;
-    if (!selectedCardTab) {
-      setSelectedCardTab(cardsFound[0] || "");
+    if (!selectedCardTab && cardsFound.length > 0) {
+      setSelectedCardTab(cardsFound[0]);
     }
   }, [activeTab, selectedCardTab, cardsFound]);
 
-  // itens do mês por cartão selecionado
   const cardItemsThisMonth = useMemo(() => {
     if (!selectedCardTab) return [];
     let list = itemsThisMonthBase.filter(
-      (it) => it.isCardPurchase && (it.cardName || "") === selectedCardTab
+      (it) => it.isCardPurchase && (it.cardName || "").trim() === selectedCardTab
     );
 
-    // filtro opcional por pessoa (se preencher)
     const pf = (personFilter || "").trim().toLowerCase();
-    if (pf) {
-      list = list.filter((it) => (it.personName || "").toLowerCase().includes(pf));
-    }
+    if (pf) list = list.filter((it) => (it.personName || "").toLowerCase().includes(pf));
 
     return list.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
   }, [itemsThisMonthBase, selectedCardTab, personFilter]);
 
-  // “quem me deve” por cartão (somente despesas em aberto do mês filtrado)
   const owedByPersonThisMonth = useMemo(() => {
-    // regra: conta “deve” quando:
-    // - isCardPurchase = true
-    // - personName preenchido
-    // - type expense
-    // - NOT paid
     const map = new Map();
     for (const it of cardItemsThisMonth) {
       if (it.type !== "expense") continue;
       if (it.paid) continue;
       const p = (it.personName || "").trim();
-      if (!p) continue; // vazio = meu, não entra como dívida
+      if (!p) continue; // vazio = meu
       const v = Number(it.amount || 0);
       map.set(p, (map.get(p) || 0) + v);
     }
@@ -435,7 +407,6 @@ export default function FinanceApp() {
       .sort((a, b) => b.value - a.value);
   }, [cardItemsThisMonth]);
 
-  // total do cartão no mês (tudo)
   const cardTotalsThisMonth = useMemo(() => {
     let expense = 0;
     let income = 0;
@@ -492,9 +463,7 @@ export default function FinanceApp() {
         const target = cat.value * 0.9;
         suggestions.push({
           title: `Você aumentou em ${cat.name}`,
-          text: `Este mês: ${BRL.format(cat.value)} | média dos últimos 2 meses: ${BRL.format(
-            prevAvgPerMonth
-          )}. Tente limitar para ~ ${BRL.format(target)}.`,
+          text: `Este mês: ${BRL.format(cat.value)} | média dos últimos 2 meses: ${BRL.format(prevAvgPerMonth)}. Tente limitar para ~ ${BRL.format(target)}.`,
         });
       }
     }
@@ -521,43 +490,21 @@ export default function FinanceApp() {
 
           <div style={styles.sideGroup}>
             <div style={styles.sideLabel}>Mês</div>
-            <select
-              value={monthIndex}
-              onChange={(e) => setMonthIndex(Number(e.target.value))}
-              style={styles.sideSelect}
-            >
+            <select value={monthIndex} onChange={(e) => setMonthIndex(Number(e.target.value))} style={styles.sideSelect}>
               {[
-                "Janeiro",
-                "Fevereiro",
-                "Março",
-                "Abril",
-                "Maio",
-                "Junho",
-                "Julho",
-                "Agosto",
-                "Setembro",
-                "Outubro",
-                "Novembro",
-                "Dezembro",
+                "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
               ].map((m, idx) => (
-                <option key={m} value={idx}>
-                  {m}
-                </option>
+                <option key={m} value={idx}>{m}</option>
               ))}
             </select>
           </div>
 
           <div style={styles.sideGroup}>
             <div style={styles.sideLabel}>Ano</div>
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              style={styles.sideSelect}
-            >
+            <select value={year} onChange={(e) => setYear(Number(e.target.value))} style={styles.sideSelect}>
               {Array.from({ length: 11 }, (_, i) => now.getFullYear() - 5 + i).map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
+                <option key={y} value={y}>{y}</option>
               ))}
             </select>
           </div>
@@ -622,9 +569,7 @@ export default function FinanceApp() {
               <span style={styles.brandIcon}>💰</span>
               <div>
                 <h1 style={styles.title}>Minhas Finanças</h1>
-                <div style={styles.subTitle}>
-                  {monthLabel} / {year}
-                </div>
+                <div style={styles.subTitle}>{monthLabel} / {year}</div>
               </div>
             </div>
 
@@ -662,9 +607,7 @@ export default function FinanceApp() {
             </div>
             <div style={styles.cardSmall}>
               <div style={styles.cardLabel}>Pagas x Em aberto</div>
-              <div style={styles.cardValue}>
-                {paidOpenStats.paid} / {paidOpenStats.open}
-              </div>
+              <div style={styles.cardValue}>{paidOpenStats.paid} / {paidOpenStats.open}</div>
               <div style={styles.cardHint}>(despesas do mês)</div>
             </div>
           </section>
@@ -701,9 +644,7 @@ export default function FinanceApp() {
                       <label style={styles.label}>Forma</label>
                       <select value={category} onChange={(e) => setCategory(e.target.value)} style={styles.select}>
                         {DEFAULT_CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
+                          <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
                     </div>
@@ -722,19 +663,16 @@ export default function FinanceApp() {
                       <label style={styles.label}>Vencimento (dia)</label>
                       <select value={dueDay} onChange={(e) => setDueDay(Number(e.target.value))} style={styles.select}>
                         {daysOptions.map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
+                          <option key={d} value={d}>{d}</option>
                         ))}
                       </select>
                       <div style={styles.hint}>
-                        Venc.: {pad2(dueDatePreview.getDate())}/{pad2(dueDatePreview.getMonth() + 1)}/
-                        {dueDatePreview.getFullYear()}
+                        Venc.: {pad2(dueDatePreview.getDate())}/{pad2(dueDatePreview.getMonth() + 1)}/{dueDatePreview.getFullYear()}
                       </div>
                     </div>
                   </div>
 
-                  {/* ===== NOVO BLOCO CARTÃO/PESSOA ===== */}
+                  {/* ===== CARTÃO / PESSOA ===== */}
                   <div style={styles.installmentBox}>
                     <label style={styles.checkboxRow}>
                       <input
@@ -748,15 +686,23 @@ export default function FinanceApp() {
                     {isCardPurchase && (
                       <div style={styles.installmentGrid}>
                         <div style={styles.field}>
-                          <label style={styles.label}>Cartão</label>
-                          <select value={cardName} onChange={(e) => setCardName(e.target.value)} style={styles.select}>
-                            {cardsFound.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
+                          <label style={styles.label}>Banco do cartão</label>
+                          <input
+                            value={cardName}
+                            onChange={(e) => setCardName(e.target.value)}
+                            placeholder="Ex: Nubank, Inter, Itaú..."
+                            style={styles.input}
+                            list="card-suggestions"
+                            required
+                          />
+                          <datalist id="card-suggestions">
+                            {cardsSuggestions.map((c) => (
+                              <option key={c} value={c} />
                             ))}
-                          </select>
-                          <div style={styles.hint}>Isso alimenta automaticamente a aba “Cartões”.</div>
+                          </datalist>
+                          <div style={styles.hint}>
+                            Você digita o banco e ele vira subaba automaticamente na aba “Cartões”.
+                          </div>
                         </div>
 
                         <div style={styles.field}>
@@ -773,10 +719,14 @@ export default function FinanceApp() {
                     )}
                   </div>
 
-                  {/* Parcelamento */}
+                  {/* ===== PARCELAMENTO ===== */}
                   <div style={styles.installmentBox}>
                     <label style={styles.checkboxRow}>
-                      <input type="checkbox" checked={isInstallment} onChange={(e) => setIsInstallment(e.target.checked)} />
+                      <input
+                        type="checkbox"
+                        checked={isInstallment}
+                        onChange={(e) => setIsInstallment(e.target.checked)}
+                      />
                       <span style={{ fontWeight: 800 }}>Compra parcelada</span>
                     </label>
 
@@ -812,9 +762,7 @@ export default function FinanceApp() {
                   </div>
 
                   <div style={styles.actionsRow}>
-                    <button type="submit" style={styles.buttonPrimary}>
-                      Adicionar
-                    </button>
+                    <button type="submit" style={styles.buttonPrimary}>Adicionar</button>
                   </div>
                 </form>
               </section>
@@ -842,9 +790,8 @@ export default function FinanceApp() {
                       const d = new Date(it.dueDate);
                       const venc = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
                       const parcelaTxt = it.installment ? `${it.installment.index}/${it.installment.total}` : "-";
-
                       const cardTxt = it.isCardPurchase
-                        ? `${it.cardName || "Cartão"}${it.personName ? ` • ${it.personName}` : ""}`
+                        ? `${(it.cardName || "").trim() || "—"}${it.personName ? ` • ${it.personName}` : ""}`
                         : "-";
 
                       return (
@@ -865,7 +812,11 @@ export default function FinanceApp() {
 
                           <div>
                             <label style={styles.checkboxRowSmall}>
-                              <input type="checkbox" checked={!!it.paid} onChange={() => togglePaid(it.id, it.paid)} />
+                              <input
+                                type="checkbox"
+                                checked={!!it.paid}
+                                onChange={() => togglePaid(it.id, it.paid)}
+                              />
                               <span>{it.paid ? "Pago" : "Em aberto"}</span>
                             </label>
                           </div>
@@ -905,120 +856,130 @@ export default function FinanceApp() {
             </>
           )}
 
-          {/* ===================== ABA CARTÕES (NOVO) ===================== */}
+          {/* ===================== ABA CARTOES ===================== */}
           {activeTab === TAB.CARTOES && (
             <>
               <section style={styles.card}>
                 <h2 style={styles.h2}>Cartões</h2>
 
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-                  {cardsFound.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => {
-                        setSelectedCardTab(c);
-                        setPersonFilter("");
-                      }}
-                      style={selectedCardTab === c ? styles.pillActive : styles.pill}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <div style={styles.cardSmall}>
-                    <div style={styles.cardLabel}>Total despesas (cartão no mês)</div>
-                    <div style={styles.cardValue}>{BRL.format(cardTotalsThisMonth.expense)}</div>
+                {cardsFound.length === 0 ? (
+                  <div style={styles.empty}>
+                    Nenhum cartão cadastrado ainda. Marque “Compra no cartão?” e digite o banco para criar a subaba.
                   </div>
-                  <div style={styles.cardSmall}>
-                    <div style={styles.cardLabel}>Total receitas (cartão no mês)</div>
-                    <div style={styles.cardValue}>{BRL.format(cardTotalsThisMonth.income)}</div>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <div style={styles.sideLabel}>Filtrar por pessoa</div>
-                  <input
-                    value={personFilter}
-                    onChange={(e) => setPersonFilter(e.target.value)}
-                    placeholder="Digite o nome (ex: Maria)"
-                    style={styles.input}
-                  />
-                  <div style={styles.hint}>
-                    Mostra compras no cartão do mês. Se a pessoa estiver preenchida, aparece como dívida.
-                  </div>
-                </div>
-              </section>
-
-              <section style={styles.grid2}>
-                <div style={styles.card}>
-                  <h2 style={styles.h2}>Quem me deve (em aberto) — {selectedCardTab}</h2>
-
-                  {owedByPersonThisMonth.length === 0 ? (
-                    <div style={styles.empty}>Nenhuma dívida em aberto neste cartão (no mês filtrado).</div>
-                  ) : (
-                    <div style={styles.table}>
-                      <div style={{ ...styles.row, ...styles.rowHeader, gridTemplateColumns: "1.2fr 220px" }}>
-                        <div>Pessoa</div>
-                        <div>Total em aberto</div>
-                      </div>
-
-                      {owedByPersonThisMonth.map((p) => (
-                        <div key={p.name} style={{ ...styles.row, gridTemplateColumns: "1.2fr 220px" }}>
-                          <div style={{ fontWeight: 900 }}>{p.name}</div>
-                          <div style={{ fontWeight: 1000 }}>{BRL.format(p.value)}</div>
-                        </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                      {cardsFound.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCardTab(c);
+                            setPersonFilter("");
+                          }}
+                          style={selectedCardTab === c ? styles.pillActive : styles.pill}
+                        >
+                          {c}
+                        </button>
                       ))}
                     </div>
-                  )}
-                </div>
 
-                <div style={styles.card}>
-                  <h2 style={styles.h2}>Lançamentos do cartão — {selectedCardTab}</h2>
-
-                  {cardItemsThisMonth.length === 0 ? (
-                    <div style={styles.empty}>Nenhuma compra registrada neste cartão (no mês filtrado).</div>
-                  ) : (
-                    <div style={styles.table}>
-                      <div
-                        style={{
-                          ...styles.row,
-                          ...styles.rowHeader,
-                          gridTemplateColumns: "120px 1.4fr 120px 150px 120px",
-                        }}
-                      >
-                        <div>Venc.</div>
-                        <div>Descrição</div>
-                        <div>Valor</div>
-                        <div>Pessoa</div>
-                        <div>Status</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div style={styles.cardSmall}>
+                        <div style={styles.cardLabel}>Total despesas (cartão no mês)</div>
+                        <div style={styles.cardValue}>{BRL.format(cardTotalsThisMonth.expense)}</div>
                       </div>
-
-                      {cardItemsThisMonth.map((it) => {
-                        const d = new Date(it.dueDate);
-                        const venc = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
-                        return (
-                          <div
-                            key={it.id}
-                            style={{
-                              ...styles.row,
-                              gridTemplateColumns: "120px 1.4fr 120px 150px 120px",
-                            }}
-                          >
-                            <div>{venc}</div>
-                            <div style={{ fontWeight: 800 }}>{it.note || "(sem descrição)"}</div>
-                            <div style={{ fontWeight: 1000 }}>{BRL.format(Number(it.amount || 0))}</div>
-                            <div>{(it.personName || "").trim() ? it.personName : "Meu"}</div>
-                            <div>{it.paid ? "Pago" : "Em aberto"}</div>
-                          </div>
-                        );
-                      })}
+                      <div style={styles.cardSmall}>
+                        <div style={styles.cardLabel}>Total receitas (cartão no mês)</div>
+                        <div style={styles.cardValue}>{BRL.format(cardTotalsThisMonth.income)}</div>
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <div style={styles.sideLabel}>Filtrar por pessoa</div>
+                      <input
+                        value={personFilter}
+                        onChange={(e) => setPersonFilter(e.target.value)}
+                        placeholder="Digite o nome (ex: Maria)"
+                        style={styles.input}
+                      />
+                      <div style={styles.hint}>
+                        Mostra compras no cartão do mês. Se a pessoa estiver preenchida, aparece como dívida.
+                      </div>
+                    </div>
+                  </>
+                )}
               </section>
+
+              {cardsFound.length > 0 && (
+                <section style={styles.grid2}>
+                  <div style={styles.card}>
+                    <h2 style={styles.h2}>Quem me deve (em aberto) — {selectedCardTab}</h2>
+
+                    {owedByPersonThisMonth.length === 0 ? (
+                      <div style={styles.empty}>Nenhuma dívida em aberto neste cartão (no mês filtrado).</div>
+                    ) : (
+                      <div style={styles.table}>
+                        <div style={{ ...styles.row, ...styles.rowHeader, gridTemplateColumns: "1.2fr 220px" }}>
+                          <div>Pessoa</div>
+                          <div>Total em aberto</div>
+                        </div>
+
+                        {owedByPersonThisMonth.map((p) => (
+                          <div key={p.name} style={{ ...styles.row, gridTemplateColumns: "1.2fr 220px" }}>
+                            <div style={{ fontWeight: 900 }}>{p.name}</div>
+                            <div style={{ fontWeight: 1000 }}>{BRL.format(p.value)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={styles.card}>
+                    <h2 style={styles.h2}>Lançamentos do cartão — {selectedCardTab}</h2>
+
+                    {cardItemsThisMonth.length === 0 ? (
+                      <div style={styles.empty}>Nenhuma compra registrada neste cartão (no mês filtrado).</div>
+                    ) : (
+                      <div style={styles.table}>
+                        <div
+                          style={{
+                            ...styles.row,
+                            ...styles.rowHeader,
+                            gridTemplateColumns: "120px 1.4fr 120px 150px 120px",
+                          }}
+                        >
+                          <div>Venc.</div>
+                          <div>Descrição</div>
+                          <div>Valor</div>
+                          <div>Pessoa</div>
+                          <div>Status</div>
+                        </div>
+
+                        {cardItemsThisMonth.map((it) => {
+                          const d = new Date(it.dueDate);
+                          const venc = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+                          return (
+                            <div
+                              key={it.id}
+                              style={{
+                                ...styles.row,
+                                gridTemplateColumns: "120px 1.4fr 120px 150px 120px",
+                              }}
+                            >
+                              <div>{venc}</div>
+                              <div style={{ fontWeight: 800 }}>{it.note || "(sem descrição)"}</div>
+                              <div style={{ fontWeight: 1000 }}>{BRL.format(Number(it.amount || 0))}</div>
+                              <div>{(it.personName || "").trim() ? it.personName : "Meu"}</div>
+                              <div>{it.paid ? "Pago" : "Em aberto"}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
             </>
           )}
 
@@ -1086,13 +1047,7 @@ export default function FinanceApp() {
                   <div style={styles.empty}>Sem itens nessa categoria no mês.</div>
                 ) : (
                   <div style={styles.table}>
-                    <div
-                      style={{
-                        ...styles.row,
-                        ...styles.rowHeader,
-                        gridTemplateColumns: "140px 1.6fr 140px 140px 140px",
-                      }}
-                    >
+                    <div style={{ ...styles.row, ...styles.rowHeader, gridTemplateColumns: "140px 1.6fr 140px 140px 140px" }}>
                       <div>Venc.</div>
                       <div>Descrição</div>
                       <div>Forma</div>
@@ -1104,13 +1059,7 @@ export default function FinanceApp() {
                       const d = new Date(it.dueDate);
                       const venc = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
                       return (
-                        <div
-                          key={it.id}
-                          style={{
-                            ...styles.row,
-                            gridTemplateColumns: "140px 1.6fr 140px 140px 140px",
-                          }}
-                        >
+                        <div key={it.id} style={{ ...styles.row, gridTemplateColumns: "140px 1.6fr 140px 140px 140px" }}>
                           <div>{venc}</div>
                           <div style={{ fontWeight: 700 }}>{it.note || "(sem descrição)"}</div>
                           <div>{it.category}</div>
@@ -1165,9 +1114,7 @@ export default function FinanceApp() {
                     </div>
                   )}
 
-                  <div style={styles.hint}>
-                    (Heurística: compara com os 2 meses anteriores e sugere meta de redução)
-                  </div>
+                  <div style={styles.hint}>(Heurística: compara com os 2 meses anteriores e sugere meta de redução)</div>
                 </div>
               </section>
 
@@ -1178,26 +1125,14 @@ export default function FinanceApp() {
                   <div style={styles.empty}>Sem dados para listar.</div>
                 ) : (
                   <div style={styles.table}>
-                    <div
-                      style={{
-                        ...styles.row,
-                        ...styles.rowHeader,
-                        gridTemplateColumns: "1.2fr 200px 240px",
-                      }}
-                    >
+                    <div style={{ ...styles.row, ...styles.rowHeader, gridTemplateColumns: "1.2fr 200px 240px" }}>
                       <div>Categoria</div>
                       <div>Total</div>
                       <div>Ação</div>
                     </div>
 
                     {insights.topCats.slice(0, 10).map((c) => (
-                      <div
-                        key={c.name}
-                        style={{
-                          ...styles.row,
-                          gridTemplateColumns: "1.2fr 200px 240px",
-                        }}
-                      >
+                      <div key={c.name} style={{ ...styles.row, gridTemplateColumns: "1.2fr 200px 240px" }}>
                         <div style={{ fontWeight: 800 }}>{c.name}</div>
                         <div style={{ fontWeight: 900 }}>{BRL.format(c.value)}</div>
                         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -1228,18 +1163,8 @@ export default function FinanceApp() {
 /* ===================== STYLES ===================== */
 
 const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#0b1220",
-    padding: 16,
-  },
-
-  shell: {
-    display: "grid",
-    gridTemplateColumns: "280px 1fr",
-    gap: 14,
-    alignItems: "start",
-  },
+  page: { minHeight: "100vh", background: "#0b1220", padding: 16 },
+  shell: { display: "grid", gridTemplateColumns: "280px 1fr", gap: 14, alignItems: "start" },
 
   sidebar: {
     background: "#0f172a",
@@ -1253,21 +1178,9 @@ const styles = {
     gridAutoRows: "min-content",
     gap: 12,
   },
-  sideTitle: {
-    fontWeight: 1000,
-    color: "#e2e8f0",
-    letterSpacing: 0.2,
-    fontSize: 16,
-  },
-  sideGroup: {
-    display: "grid",
-    gap: 8,
-  },
-  sideLabel: {
-    color: "#94a3b8",
-    fontSize: 12,
-    fontWeight: 800,
-  },
+  sideTitle: { fontWeight: 1000, color: "#e2e8f0", letterSpacing: 0.2, fontSize: 16 },
+  sideGroup: { display: "grid", gap: 8 },
+  sideLabel: { color: "#94a3b8", fontSize: 12, fontWeight: 800 },
   sideSelect: {
     height: 40,
     borderRadius: 10,
@@ -1278,14 +1191,7 @@ const styles = {
     background: "#0b1220",
     color: "#e2e8f0",
   },
-  sideCheckRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    color: "#e2e8f0",
-    fontSize: 13,
-    fontWeight: 700,
-  },
+  sideCheckRow: { display: "flex", alignItems: "center", gap: 10, color: "#e2e8f0", fontSize: 13, fontWeight: 700 },
   sideBtn: {
     height: 42,
     borderRadius: 10,
@@ -1317,48 +1223,14 @@ const styles = {
     gap: 6,
   },
 
-  main: {
-    background: "#f6f7fb",
-    borderRadius: 14,
-    padding: 16,
-    minHeight: "calc(100vh - 32px)",
-  },
+  main: { background: "#f6f7fb", borderRadius: 14, padding: 16, minHeight: "calc(100vh - 32px)" },
 
-  topHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 12,
-  },
-  brand: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-  },
-  brandIcon: {
-    fontSize: 26,
-  },
-  title: {
-    margin: 0,
-    fontSize: 30,
-    letterSpacing: -0.4,
-    color: "#0b1b2b",
-    fontWeight: 1000,
-  },
-  subTitle: {
-    marginTop: 4,
-    color: "#64748b",
-    fontSize: 13,
-    fontWeight: 700,
-  },
-  topActions: {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    flexWrap: "wrap",
-  },
+  topHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 },
+  brand: { display: "flex", alignItems: "center", gap: 12 },
+  brandIcon: { fontSize: 26 },
+  title: { margin: 0, fontSize: 30, letterSpacing: -0.4, color: "#0b1b2b", fontWeight: 1000 },
+  subTitle: { marginTop: 4, color: "#64748b", fontSize: 13, fontWeight: 700 },
+  topActions: { display: "flex", gap: 10, alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap" },
   btnSoft: {
     height: 40,
     padding: "0 12px",
@@ -1369,12 +1241,7 @@ const styles = {
     cursor: "pointer",
   },
 
-  cardsRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    gap: 12,
-    marginBottom: 12,
-  },
+  cardsRow: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 12 },
   cardSmall: {
     background: "#fff",
     border: "1px solid #e6eaf2",
@@ -1384,28 +1251,11 @@ const styles = {
     display: "grid",
     gap: 6,
   },
-  cardLabel: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: 900,
-  },
-  cardValue: {
-    fontSize: 20,
-    color: "#0b1b2b",
-    fontWeight: 1000,
-  },
-  cardHint: {
-    fontSize: 12,
-    color: "#94a3b8",
-    fontWeight: 700,
-  },
+  cardLabel: { fontSize: 12, color: "#64748b", fontWeight: 900 },
+  cardValue: { fontSize: 20, color: "#0b1b2b", fontWeight: 1000 },
+  cardHint: { fontSize: 12, color: "#94a3b8", fontWeight: 700 },
 
-  grid2: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-    marginBottom: 12,
-  },
+  grid2: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginBottom: 12 },
 
   card: {
     background: "#fff",
@@ -1415,36 +1265,14 @@ const styles = {
     boxShadow: "0 6px 22px rgba(9,30,66,0.06)",
     marginBottom: 12,
   },
-  h2: {
-    margin: "2px 0 12px 0",
-    fontSize: 16,
-    color: "#0b1b2b",
-    fontWeight: 1000,
-  },
+  h2: { margin: "2px 0 12px 0", fontSize: 16, color: "#0b1b2b", fontWeight: 1000 },
 
-  chartWrap: {
-    width: "100%",
-    height: 320,
-  },
+  chartWrap: { width: "100%", height: 320 },
 
-  form: {
-    display: "grid",
-    gap: 14,
-  },
-  grid: {
-    display: "grid",
-    gap: 12,
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-  },
-  field: {
-    display: "grid",
-    gap: 6,
-  },
-  label: {
-    fontSize: 12,
-    color: "#4a5568",
-    fontWeight: 900,
-  },
+  form: { display: "grid", gap: 14 },
+  grid: { display: "grid", gap: 12, gridTemplateColumns: "repeat(5, minmax(0, 1fr))" },
+  field: { display: "grid", gap: 6 },
+  label: { fontSize: 12, color: "#4a5568", fontWeight: 900 },
   input: {
     height: 40,
     borderRadius: 10,
@@ -1466,11 +1294,7 @@ const styles = {
     width: "100%",
     boxSizing: "border-box",
   },
-  hint: {
-    fontSize: 12,
-    color: "#718096",
-    fontWeight: 700,
-  },
+  hint: { fontSize: 12, color: "#718096", fontWeight: 700 },
 
   installmentBox: {
     border: "1px dashed #dbe3f0",
@@ -1480,116 +1304,23 @@ const styles = {
     gap: 12,
     background: "#fbfcff",
   },
-  installmentGrid: {
-    display: "grid",
-    gap: 12,
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  },
-  checkboxRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 14,
-    color: "#2d3748",
-    fontWeight: 800,
-  },
-  checkboxRowSmall: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    fontSize: 12,
-    color: "#2d3748",
-    whiteSpace: "nowrap",
-    fontWeight: 800,
-  },
+  installmentGrid: { display: "grid", gap: 12, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
+  checkboxRow: { display: "flex", alignItems: "center", gap: 10, fontSize: 14, color: "#2d3748", fontWeight: 800 },
+  checkboxRowSmall: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#2d3748", whiteSpace: "nowrap", fontWeight: 800 },
 
-  actionsRow: {
-    display: "flex",
-    justifyContent: "flex-end",
-  },
-  buttonPrimary: {
-    height: 42,
-    padding: "0 16px",
-    borderRadius: 12,
-    border: 0,
-    background: "#2563eb",
-    color: "#fff",
-    fontWeight: 1000,
-    cursor: "pointer",
-  },
+  actionsRow: { display: "flex", justifyContent: "flex-end" },
+  buttonPrimary: { height: 42, padding: "0 16px", borderRadius: 12, border: 0, background: "#2563eb", color: "#fff", fontWeight: 1000, cursor: "pointer" },
 
-  table: {
-    display: "grid",
-    gap: 8,
-  },
-  row: {
-    display: "grid",
-    gridTemplateColumns: "110px 1.4fr 110px 120px 120px 90px 140px 1fr",
-    gap: 10,
-    alignItems: "center",
-    padding: "10px 10px",
-    border: "1px solid #eef2f8",
-    borderRadius: 12,
-  },
-  rowHeader: {
-    background: "#f8fafc",
-    fontSize: 12,
-    color: "#475569",
-    fontWeight: 1000,
-  },
-  rowActions: {
-    display: "flex",
-    gap: 8,
-    justifyContent: "flex-end",
-    flexWrap: "wrap",
-  },
-  smallBtn: {
-    height: 34,
-    padding: "0 10px",
-    borderRadius: 10,
-    border: "1px solid #dbe3f0",
-    background: "#fff",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 12,
-  },
-  dangerBtn: {
-    borderColor: "#fecaca",
-    color: "#b91c1c",
-  },
-  empty: {
-    color: "#64748b",
-    padding: 10,
-    fontWeight: 800,
-  },
+  table: { display: "grid", gap: 8 },
+  row: { display: "grid", gridTemplateColumns: "110px 1.4fr 110px 120px 120px 90px 140px 1fr", gap: 10, alignItems: "center", padding: "10px 10px", border: "1px solid #eef2f8", borderRadius: 12 },
+  rowHeader: { background: "#f8fafc", fontSize: 12, color: "#475569", fontWeight: 1000 },
+  rowActions: { display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" },
+  smallBtn: { height: 34, padding: "0 10px", borderRadius: 10, border: "1px solid #dbe3f0", background: "#fff", cursor: "pointer", fontWeight: 900, fontSize: 12 },
+  dangerBtn: { borderColor: "#fecaca", color: "#b91c1c" },
+  empty: { color: "#64748b", padding: 10, fontWeight: 800 },
 
-  suggestionCard: {
-    border: "1px solid #e6eaf2",
-    background: "#fff",
-    borderRadius: 14,
-    padding: 12,
-    boxShadow: "0 6px 18px rgba(9,30,66,0.04)",
-  },
+  suggestionCard: { border: "1px solid #e6eaf2", background: "#fff", borderRadius: 14, padding: 12, boxShadow: "0 6px 18px rgba(9,30,66,0.04)" },
 
-  pill: {
-    height: 34,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: "1px solid #dbe3f0",
-    background: "#fff",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 12,
-  },
-  pillActive: {
-    height: 34,
-    padding: "0 12px",
-    borderRadius: 999,
-    border: "1px solid #1d4ed8",
-    background: "#1d4ed8",
-    color: "#fff",
-    cursor: "pointer",
-    fontWeight: 1000,
-    fontSize: 12,
-  },
+  pill: { height: 34, padding: "0 12px", borderRadius: 999, border: "1px solid #dbe3f0", background: "#fff", cursor: "pointer", fontWeight: 900, fontSize: 12 },
+  pillActive: { height: 34, padding: "0 12px", borderRadius: 999, border: "1px solid #1d4ed8", background: "#1d4ed8", color: "#fff", cursor: "pointer", fontWeight: 1000, fontSize: 12 },
 };
