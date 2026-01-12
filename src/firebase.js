@@ -1,39 +1,31 @@
 import { initializeApp } from "firebase/app";
 
-import {
-  getAuth,
-  setPersistence,
-  browserLocalPersistence,
-} from "firebase/auth";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 
-import {
-  getFirestore,
-  enableIndexedDbPersistence,
-} from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
-// ⚠️ IMPORTANTE: mantenha EXATAMENTE as chaves do seu projeto Firebase
-// Se você já tem esse objeto no seu arquivo atual, pode reaproveitar.
-// Se não tiver, copie do Firebase Console > Project settings > Your apps > Firebase SDK config.
+// ✅ SUA CONFIG DO FIREBASE (já preenchida)
 const firebaseConfig = {
-  apiKey: "COLE_AQUI",
-  authDomain: "COLE_AQUI",
-  projectId: "COLE_AQUI",
-  storageBucket: "COLE_AQUI",
-  messagingSenderId: "COLE_AQUI",
-  appId: "COLE_AQUI",
+  apiKey: "AIzaSyDp3edNnevPlGmIKTYFEBfCVztrwcQDRnE",
+  authDomain: "assistente---controlefinan.firebaseapp.com",
+  projectId: "assistente---controlefinan",
+  storageBucket: "assistente---controlefinan.firebasestorage.app",
+  messagingSenderId: "448399185816",
+  appId: "1:448399185816:web:777e2a810af9b98cdb7ded",
 };
 
 const app = initializeApp(firebaseConfig);
 
+// Auth + Firestore
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// ✅ Mantém o login mesmo após F5/recarregar
+// ✅ Mantém login mesmo após F5/fechar navegador
 setPersistence(auth, browserLocalPersistence).catch((err) => {
   console.error("Auth persistence error:", err);
 });
 
-// ✅ Cache offline do Firestore (segura dados e sincroniza quando voltar)
+// ✅ Cache local do Firestore (não perde dados offline / sincroniza depois)
 enableIndexedDbPersistence(db).catch((err) => {
   console.warn("Firestore persistence not enabled:", err?.code || err);
 });

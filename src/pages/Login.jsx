@@ -1,69 +1,171 @@
-import React, { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../firebase";
-import logo from "../assets/logo.svg";
+import React, { useMemo, useState } from "react";
+import { auth } from "./firebase";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 
-export default function Login({ onRegister }) {
+function humanizeAuthError(code) {
+  const map = {
+    "auth/invalid-email": "E-mail inválido.",
+    "auth/user-not-found": "Usuário não encontrado (crie a conta primeiro).",
+    "auth/wrong-password": "Senha incorreta.",
+    "auth/invalid-credential":
+      "Credenciais inválidas. Confira e-mail/senha. (Pode ser domínio não autorizado ou método desativado.)",
+    "auth/email-already-in-use": "Esse e-mail já está em uso. Tente fazer login.",
+    "auth/weak-password": "Senha fraca. Use pelo menos 6 caracteres.",
+    "auth/operation-not-allowed":
+      "Método de login não habilitado no Firebase. Ative 'E-mail/senha' em Authentication.",
+    "auth/unauthorized-domain":
+      "Domínio não autorizado. Adicione seu domínio da Vercel em Authentication > Settings > Authorized domains.",
+    "auth/network-request-failed":
+      "Falha de rede. Verifique internet / bloqueios do navegador.",
+    "auth/too-many-requests":
+      "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+  };
+  return map[code] || "Erro ao autenticar.";
+}
+
+export default function Login() {
+  const [mode, setMode] = useState("login"); // login | register
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function entrar(e) {
+  const canSubmit = useMemo(() => {
+    return email.trim().length > 0 && senha.length >= 6 && !loading;
+  }, [email, senha, loading]);
+
+  async function handleLogin(e) {
     e.preventDefault();
-    setErro("");
-
+    setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, senha);
+      await signInWithEmailAndPassword(auth, email.trim(), senha);
+      // se deu certo, o App deve trocar automaticamente pra tela principal pelo onAuthStateChanged
     } catch (err) {
-      setErro("Email ou senha inválidos.");
+      console.error("LOGIN ERROR:", err);
+      const code = err?.code || "";
+      alert(
+        `${humanizeAuthError(code)}\n\nCódigo: ${code}\nMensagem: ${err?.message || ""}`
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await createUserWithEmailAndPassword(auth, email.trim(), senha);
+      // sucesso -> já loga automaticamente
+    } catch (err) {
+      console.error("REGISTER ERROR:", err);
+      const code = err?.code || "";
+      alert(
+        `${humanizeAuthError(code)}\n\nCódigo: ${code}\nMensagem: ${err?.message || ""}`
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    const em = email.trim();
+    if (!em) {
+      alert("Digite seu e-mail no campo para enviar o reset.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, em);
+      alert("Enviei um e-mail para redefinir sua senha. Verifique a caixa de entrada e o spam.");
+    } catch (err) {
+      console.error("RESET ERROR:", err);
+      const code = err?.code || "";
+      alert(
+        `${humanizeAuthError(code)}\n\nCódigo: ${code}\nMensagem: ${err?.message || ""}`
+      );
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <img src={logo} alt="Logo" style={styles.logo} />
-        <h2 style={styles.title}>Entrar</h2>
+        <div style={styles.logoRow}>
+          <div style={styles.logoCircle}>💰</div>
+          <div>
+            <div style={styles.appName}>Minhas Finanças</div>
+            <div style={styles.subtitle}>
+              {mode === "login" ? "Entrar" : "Criar conta"}
+            </div>
+          </div>
+        </div>
 
-        <form onSubmit={entrar} style={styles.form}>
+        <form onSubmit={mode === "login" ? handleLogin : handleRegister} style={styles.form}>
+          <label style={styles.label}>E-mail</label>
           <input
             style={styles.input}
-            type="email"
-            placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
+            placeholder="seuemail@gmail.com"
+            type="email"
+            autoComplete="email"
           />
 
+          <label style={styles.label}>Senha (mínimo 6)</label>
           <input
             style={styles.input}
-            type="password"
-            placeholder="Senha"
             value={senha}
             onChange={(e) => setSenha(e.target.value)}
-            required
+            placeholder="••••••"
+            type="password"
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
 
-          {erro && <div style={styles.error}>{erro}</div>}
-
-          <button style={styles.button} type="submit">
-            Entrar
-          </button>
-        </form>
-
-        <p style={styles.footer}>
-          Não tem conta?{" "}
           <button
-            type="button"
-            onClick={() => {
-              if (onRegister) onRegister();
-              else alert("onRegister não está vindo do App.jsx");
-            }}
-            style={styles.linkBtn}
+            type="submit"
+            disabled={!canSubmit}
+            style={{ ...styles.button, opacity: canSubmit ? 1 : 0.6 }}
           >
-            Criar conta
+            {loading
+              ? "Aguarde..."
+              : mode === "login"
+              ? "Entrar"
+              : "Criar conta"}
           </button>
-        </p>
+
+          <div style={styles.rowBetween}>
+            <button
+              type="button"
+              onClick={() => setMode(mode === "login" ? "register" : "login")}
+              style={styles.linkBtn}
+              disabled={loading}
+            >
+              {mode === "login"
+                ? "Criar conta"
+                : "Já tenho conta"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              style={styles.linkBtn}
+              disabled={loading}
+            >
+              Esqueci a senha
+            </button>
+          </div>
+
+          <div style={styles.tip}>
+            Se aparecer “domínio não autorizado”, você precisa liberar seu domínio da Vercel em:
+            <br />
+            <b>Firebase → Authentication → Settings → Authorized domains</b>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -71,59 +173,82 @@ export default function Login({ onRegister }) {
 
 const styles = {
   page: {
-  minHeight: "100vh",
-  width: "100vw",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "radial-gradient(circle at top, #0b1220 0%, #050810 70%)",
-},
+    minHeight: "100vh",
+    display: "grid",
+    placeItems: "center",
+    background: "#0b1220",
+    padding: 16,
+  },
   card: {
     width: "100%",
     maxWidth: 420,
-    background: "#fff",
-    borderRadius: 18,
-    padding: "26px 26px 18px",
-    boxShadow: "0 18px 60px rgba(0,0,0,0.35)",
-    textAlign: "center",
+    background: "#ffffff",
+    borderRadius: 16,
+    padding: 18,
+    boxShadow: "0 18px 50px rgba(0,0,0,0.30)",
+    border: "1px solid #e6eaf2",
   },
-  logo: { width: 58, height: 58, margin: "0 auto 10px", display: "block" },
-  title: { margin: "6px 0 18px", fontSize: 22 },
-  form: { display: "grid", gap: 10 },
+  logoRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  logoCircle: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    display: "grid",
+    placeItems: "center",
+    background: "#1d4ed8",
+    color: "white",
+    fontSize: 22,
+  },
+  appName: { fontWeight: 1000, fontSize: 18, color: "#0b1b2b" },
+  subtitle: { fontWeight: 800, fontSize: 13, color: "#64748b", marginTop: 2 },
+  form: { display: "grid", gap: 10, marginTop: 10 },
+  label: { fontSize: 12, fontWeight: 900, color: "#475569" },
   input: {
     height: 42,
-    borderRadius: 10,
-    border: "1px solid #dbe3ff",
+    borderRadius: 12,
+    border: "1px solid #dbe3f0",
     padding: "0 12px",
     outline: "none",
     fontSize: 14,
   },
   button: {
-    height: 42,
-    borderRadius: 10,
-    border: "none",
+    height: 44,
+    borderRadius: 12,
+    border: 0,
     background: "#2563eb",
-    color: "#fff",
-    fontWeight: 700,
+    color: "white",
+    fontWeight: 1000,
     cursor: "pointer",
+    marginTop: 6,
+  },
+  rowBetween: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginTop: 4,
   },
-  error: {
-    background: "#fff1f2",
-    border: "1px solid #fecdd3",
-    color: "#9f1239",
-    padding: "8px 10px",
-    borderRadius: 10,
-    fontSize: 13,
-  },
-  footer: { marginTop: 14, fontSize: 13, color: "#111827" },
   linkBtn: {
-    border: "none",
     background: "transparent",
-    color: "#2563eb",
-    fontWeight: 700,
+    border: 0,
+    color: "#1d4ed8",
+    fontWeight: 900,
     cursor: "pointer",
     padding: 0,
-    textDecoration: "underline",
+  },
+  tip: {
+    marginTop: 10,
+    background: "#f8fafc",
+    border: "1px solid #e6eaf2",
+    borderRadius: 12,
+    padding: 10,
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 1.35,
+    fontWeight: 700,
   },
 };
