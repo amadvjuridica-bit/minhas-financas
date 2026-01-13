@@ -1,272 +1,87 @@
-import React, { useMemo, useState } from "react";
-import { auth } from "./firebase";
+import React, { useState } from "react";
+import { auth, BUILD_TAG, firebaseConfig } from "./firebase";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendPasswordResetEmail,
 } from "firebase/auth";
 
-function traduzErroFirebase(code) {
-  const map = {
-    "auth/invalid-api-key": "API KEY inválida. Verifique o firebaseConfig (apiKey).",
-    "auth/unauthorized-domain": "Domínio não autorizado no Firebase. Adicione seu domínio do Vercel em Authentication > Settings > Authorized domains.",
-    "auth/user-not-found": "Usuário não encontrado.",
-    "auth/wrong-password": "Senha incorreta.",
-    "auth/invalid-credential": "Credencial inválida (email/senha incorretos ou usuário removido).",
-    "auth/email-already-in-use": "Este e-mail já está em uso.",
-    "auth/invalid-email": "E-mail inválido.",
-    "auth/weak-password": "Senha fraca (mínimo 6 caracteres).",
-  };
-  return map[code] || `Erro: ${code}`;
-}
-
-function humanizeAuthError(code) {
-  const map = {
-    "auth/invalid-email": "E-mail inválido.",
-    "auth/user-not-found": "Usuário não encontrado (crie a conta primeiro).",
-    "auth/wrong-password": "Senha incorreta.",
-    "auth/invalid-credential":
-      "Credenciais inválidas. Confira e-mail/senha. (Pode ser domínio não autorizado ou método desativado.)",
-    "auth/email-already-in-use": "Esse e-mail já está em uso. Tente fazer login.",
-    "auth/weak-password": "Senha fraca. Use pelo menos 6 caracteres.",
-    "auth/operation-not-allowed":
-      "Método de login não habilitado no Firebase. Ative 'E-mail/senha' em Authentication.",
-    "auth/unauthorized-domain":
-      "Domínio não autorizado. Adicione seu domínio da Vercel em Authentication > Settings > Authorized domains.",
-    "auth/network-request-failed":
-      "Falha de rede. Verifique internet / bloqueios do navegador.",
-    "auth/too-many-requests":
-      "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
-  };
-  return map[code] || "Erro ao autenticar.";
-}
-
-export default function Login() {
-  const [mode, setMode] = useState("login"); // login | register
+export default function Login({ onLogin }) {
+  const [mode, setMode] = useState("login"); // login | signup
   const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [pass, setPass] = useState("");
+  const [msg, setMsg] = useState("");
 
-  const canSubmit = useMemo(() => {
-    return email.trim().length > 0 && senha.length >= 6 && !loading;
-  }, [email, senha, loading]);
-
-  async function handleLogin(e) {
+  async function handle(e) {
     e.preventDefault();
-    setLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, email.trim(), senha);
-      // se deu certo, o App deve trocar automaticamente pra tela principal pelo onAuthStateChanged
-    } catch (err) {
-      console.error("LOGIN ERROR:", err);
-      const code = err?.code || "";
-      alert(
-        `${humanizeAuthError(code)}\n\nCódigo: ${code}\nMensagem: ${err?.message || ""}`
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+    setMsg("");
 
-  async function handleRegister(e) {
-    e.preventDefault();
-    setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email.trim(), senha);
-      // sucesso -> já loga automaticamente
+      if (mode === "login") {
+        const r = await signInWithEmailAndPassword(auth, email, pass);
+        onLogin?.(r.user);
+      } else {
+        const r = await createUserWithEmailAndPassword(auth, email, pass);
+        onLogin?.(r.user);
+      }
     } catch (err) {
-  console.error(err);
-  setError(traduzErroFirebase(err.code));
-}
-      const code = err?.code || "";
-      alert(
-        `${humanizeAuthError(code)}\n\nCódigo: ${code}\nMensagem: ${err?.message || ""}`
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleResetPassword() {
-    const em = email.trim();
-    if (!em) {
-      alert("Digite seu e-mail no campo para enviar o reset.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, em);
-      alert("Enviei um e-mail para redefinir sua senha. Verifique a caixa de entrada e o spam.");
-    } catch (err) {
-  console.error(err);
-  setError(traduzErroFirebase(err.code));
-}
-      const code = err?.code || "";
-      alert(
-        `${humanizeAuthError(code)}\n\nCódigo: ${code}\nMensagem: ${err?.message || ""}`
-      );
-    } finally {
-      setLoading(false);
+      console.error("AUTH ERROR:", err);
+      setMsg(`${err?.code || "erro"} — ${err?.message || "sem mensagem"}`);
     }
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <div style={styles.logoRow}>
-          <div style={styles.logoCircle}>💰</div>
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "#0b1220", padding: 16 }}>
+      <div style={{ width: "100%", maxWidth: 460, background: "#fff", borderRadius: 14, padding: 18 }}>
+        <h2 style={{ margin: 0, marginBottom: 10 }}>
+          {mode === "login" ? "Entrar" : "Criar conta"}
+        </h2>
+
+        {/* ✅ PAINEL DE DEBUG (isso vai matar a dúvida em 10s) */}
+        <div style={{ background: "#f1f5f9", borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12 }}>
+          <div><b>BUILD_TAG:</b> {BUILD_TAG}</div>
+          <div><b>Origin:</b> {typeof window !== "undefined" ? window.location.origin : "-"}</div>
+          <div><b>projectId:</b> {firebaseConfig.projectId}</div>
+          <div><b>authDomain:</b> {firebaseConfig.authDomain}</div>
           <div>
-            <div style={styles.appName}>Minhas Finanças</div>
-            <div style={styles.subtitle}>
-              {mode === "login" ? "Entrar" : "Criar conta"}
-            </div>
+            <b>apiKey (início):</b>{" "}
+            {firebaseConfig.apiKey ? firebaseConfig.apiKey.slice(0, 8) + "..." : "VAZIO"}
           </div>
         </div>
 
-        <form onSubmit={mode === "login" ? handleLogin : handleRegister} style={styles.form}>
-          <label style={styles.label}>E-mail</label>
+        <form onSubmit={handle} style={{ display: "grid", gap: 10 }}>
           <input
-            style={styles.input}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="seuemail@gmail.com"
-            type="email"
-            autoComplete="email"
+            placeholder="email"
+            style={{ height: 42, borderRadius: 10, border: "1px solid #cbd5e1", padding: "0 12px" }}
           />
-
-          <label style={styles.label}>Senha (mínimo 6)</label>
           <input
-            style={styles.input}
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            placeholder="••••••"
+            value={pass}
+            onChange={(e) => setPass(e.target.value)}
+            placeholder="senha (mín. 6)"
             type="password"
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            style={{ height: 42, borderRadius: 10, border: "1px solid #cbd5e1", padding: "0 12px" }}
           />
 
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            style={{ ...styles.button, opacity: canSubmit ? 1 : 0.6 }}
-          >
-            {loading
-              ? "Aguarde..."
-              : mode === "login"
-              ? "Entrar"
-              : "Criar conta"}
+          {msg && (
+            <div style={{ background: "#fee2e2", border: "1px solid #fecaca", padding: 10, borderRadius: 10, color: "#991b1b" }}>
+              {msg}
+            </div>
+          )}
+
+          <button type="submit" style={{ height: 44, borderRadius: 12, border: 0, background: "#2563eb", color: "#fff", fontWeight: 900 }}>
+            {mode === "login" ? "Entrar" : "Criar conta"}
           </button>
 
-          <div style={styles.rowBetween}>
-            <button
-              type="button"
-              onClick={() => setMode(mode === "login" ? "register" : "login")}
-              style={styles.linkBtn}
-              disabled={loading}
-            >
-              {mode === "login"
-                ? "Criar conta"
-                : "Já tenho conta"}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleResetPassword}
-              style={styles.linkBtn}
-              disabled={loading}
-            >
-              Esqueci a senha
-            </button>
-          </div>
-
-          <div style={styles.tip}>
-            Se aparecer “domínio não autorizado”, você precisa liberar seu domínio da Vercel em:
-            <br />
-            <b>Firebase → Authentication → Settings → Authorized domains</b>
-          </div>
+          <button
+            type="button"
+            onClick={() => setMode(mode === "login" ? "signup" : "login")}
+            style={{ height: 38, borderRadius: 12, border: "1px solid #cbd5e1", background: "#fff", fontWeight: 900 }}
+          >
+            {mode === "login" ? "Não tem conta? Criar" : "Já tem conta? Entrar"}
+          </button>
         </form>
       </div>
     </div>
   );
 }
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    display: "grid",
-    placeItems: "center",
-    background: "#0b1220",
-    padding: 16,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    background: "#ffffff",
-    borderRadius: 16,
-    padding: 18,
-    boxShadow: "0 18px 50px rgba(0,0,0,0.30)",
-    border: "1px solid #e6eaf2",
-  },
-  logoRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-  },
-  logoCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    display: "grid",
-    placeItems: "center",
-    background: "#1d4ed8",
-    color: "white",
-    fontSize: 22,
-  },
-  appName: { fontWeight: 1000, fontSize: 18, color: "#0b1b2b" },
-  subtitle: { fontWeight: 800, fontSize: 13, color: "#64748b", marginTop: 2 },
-  form: { display: "grid", gap: 10, marginTop: 10 },
-  label: { fontSize: 12, fontWeight: 900, color: "#475569" },
-  input: {
-    height: 42,
-    borderRadius: 12,
-    border: "1px solid #dbe3f0",
-    padding: "0 12px",
-    outline: "none",
-    fontSize: 14,
-  },
-  button: {
-    height: 44,
-    borderRadius: 12,
-    border: 0,
-    background: "#2563eb",
-    color: "white",
-    fontWeight: 1000,
-    cursor: "pointer",
-    marginTop: 6,
-  },
-  rowBetween: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 4,
-  },
-  linkBtn: {
-    background: "transparent",
-    border: 0,
-    color: "#1d4ed8",
-    fontWeight: 900,
-    cursor: "pointer",
-    padding: 0,
-  },
-  tip: {
-    marginTop: 10,
-    background: "#f8fafc",
-    border: "1px solid #e6eaf2",
-    borderRadius: 12,
-    padding: 10,
-    color: "#475569",
-    fontSize: 12,
-    lineHeight: 1.35,
-    fontWeight: 700,
-  },
-};
