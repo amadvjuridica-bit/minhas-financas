@@ -5,7 +5,8 @@ import {
   createUserWithEmailAndPassword,
 } from "firebase/auth";
 
-import logo from "../assets/logo.png"; // ✅ logo aqui
+// ✅ Logo (confere se existe: src/assets/logo.png)
+import logo from "../assets/logo.png";
 
 export default function Login({ onLogin }) {
   const [mode, setMode] = useState("login");
@@ -32,8 +33,7 @@ export default function Login({ onLogin }) {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        {/* LOGO */}
-        <img src={logo} alt="Logo" style={styles.logo} />
+        <img src={logo} alt="Minhas Finanças" style={styles.logo} />
 
         <h2 style={styles.title}>
           {mode === "login" ? "Entrar" : "Criar conta"}
@@ -66,9 +66,7 @@ export default function Login({ onLogin }) {
 
           <button
             type="button"
-            onClick={() =>
-              setMode(mode === "login" ? "signup" : "login")
-            }
+            onClick={() => setMode(mode === "login" ? "signup" : "login")}
             style={styles.linkBtn}
           >
             {mode === "login"
@@ -81,15 +79,15 @@ export default function Login({ onLogin }) {
   );
 }
 
-/* ================= STYLES ================= */
-
 const styles = {
   page: {
-    minHeight: "100vh",
+    position: "fixed",
+    inset: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     background: "linear-gradient(135deg, #0b1220, #111827)",
+    padding: 16,
   },
   card: {
     width: "100%",
@@ -101,12 +99,13 @@ const styles = {
     textAlign: "center",
   },
   logo: {
-    width: 140,
-    margin: "0 auto 20px",
+    width: 160,
+    height: "auto",
+    margin: "0 auto 18px",
     display: "block",
   },
   title: {
-    marginBottom: 20,
+    margin: "0 0 18px",
     color: "#111827",
   },
   form: {
