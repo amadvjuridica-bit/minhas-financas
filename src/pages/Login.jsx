@@ -6,6 +6,20 @@ import {
   sendPasswordResetEmail,
 } from "firebase/auth";
 
+function traduzErroFirebase(code) {
+  const map = {
+    "auth/invalid-api-key": "API KEY inválida. Verifique o firebaseConfig (apiKey).",
+    "auth/unauthorized-domain": "Domínio não autorizado no Firebase. Adicione seu domínio do Vercel em Authentication > Settings > Authorized domains.",
+    "auth/user-not-found": "Usuário não encontrado.",
+    "auth/wrong-password": "Senha incorreta.",
+    "auth/invalid-credential": "Credencial inválida (email/senha incorretos ou usuário removido).",
+    "auth/email-already-in-use": "Este e-mail já está em uso.",
+    "auth/invalid-email": "E-mail inválido.",
+    "auth/weak-password": "Senha fraca (mínimo 6 caracteres).",
+  };
+  return map[code] || `Erro: ${code}`;
+}
+
 function humanizeAuthError(code) {
   const map = {
     "auth/invalid-email": "E-mail inválido.",
@@ -61,7 +75,9 @@ export default function Login() {
       await createUserWithEmailAndPassword(auth, email.trim(), senha);
       // sucesso -> já loga automaticamente
     } catch (err) {
-      console.error("REGISTER ERROR:", err);
+  console.error(err);
+  setError(traduzErroFirebase(err.code));
+}
       const code = err?.code || "";
       alert(
         `${humanizeAuthError(code)}\n\nCódigo: ${code}\nMensagem: ${err?.message || ""}`
@@ -82,7 +98,9 @@ export default function Login() {
       await sendPasswordResetEmail(auth, em);
       alert("Enviei um e-mail para redefinir sua senha. Verifique a caixa de entrada e o spam.");
     } catch (err) {
-      console.error("RESET ERROR:", err);
+  console.error(err);
+  setError(traduzErroFirebase(err.code));
+}
       const code = err?.code || "";
       alert(
         `${humanizeAuthError(code)}\n\nCódigo: ${code}\nMensagem: ${err?.message || ""}`
