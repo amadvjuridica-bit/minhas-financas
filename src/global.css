@@ -1,0 +1,24 @@
+/* src/global.css */
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background: #0b1220;
+}
+
+/* garante que nada do template (flex/center) atrapalhe */
+body {
+  display: block !important;
+}
+
+/* se algum CSS antigo estiver limitando o root */
+#root {
+  height: 100vh !important;
+  width: 100vw !important;
+}
