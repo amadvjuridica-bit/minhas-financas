@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebase";
-import logo from "../assets/logo.svg";
+import logo from "../assets/logo.png";
 
 export default function Register({ onBack }) {
   const [email, setEmail] = useState("");
