@@ -1,10 +1,6 @@
-// src/pages/Login.jsx
 import React, { useState } from "react";
 import { auth } from "../firebase";
-import {
-  signInWithEmailAndPassword,
-} from "firebase/auth";
-
+import { signInWithEmailAndPassword } from "firebase/auth";
 import logo from "../assets/logo.png";
 
 export default function Login({ onRegister }) {
@@ -15,12 +11,10 @@ export default function Login({ onRegister }) {
   async function handle(e) {
     e.preventDefault();
     setMsg("");
-
     try {
       await signInWithEmailAndPassword(auth, email, pass);
     } catch (err) {
-      console.error("AUTH ERROR:", err);
-      setMsg(`${err?.code || "erro"} — ${err?.message || "sem mensagem"}`);
+      setMsg(err.message);
     }
   }
 
@@ -32,105 +26,65 @@ export default function Login({ onRegister }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 20,
-        background: "linear-gradient(135deg, #0b1220 0%, #0f1b35 60%, #0b1220 100%)",
+        background: "linear-gradient(135deg, #0b1220, #0f1b35)",
       }}
     >
       <div
         style={{
           width: "100%",
           maxWidth: 420,
-          background: "#fff",
+          background: "#ffffff",
           borderRadius: 16,
-          padding: 22,
-          boxShadow: "0 30px 80px rgba(0,0,0,.35)",
+          padding: 28,
+          boxShadow: "0 20px 40px rgba(0,0,0,.25)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
         }}
       >
-        {/* LOGO CENTRALIZADA */}
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-          <img
-            src={logo}
-            alt="Logo"
-            style={{
-              height: 56,
-              width: "auto",
-              objectFit: "contain",
-              display: "block",
-            }}
-          />
-        </div>
+        {/* LOGO */}
+        <img
+          src={logo}
+          alt="Logo"
+          style={{
+            width: 140,
+            marginBottom: 20,
+          }}
+        />
 
-        <h2 style={{ margin: 0, textAlign: "center", marginBottom: 14 }}>Entrar</h2>
+        <h2 style={{ marginBottom: 16 }}>Entrar</h2>
 
-        <form onSubmit={handle} style={{ display: "grid", gap: 10 }}>
+        <form
+          onSubmit={handle}
+          style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}
+        >
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="email"
-            autoComplete="email"
-            style={{
-              height: 42,
-              borderRadius: 10,
-              border: "1px solid #cbd5e1",
-              padding: "0 12px",
-            }}
+            placeholder="Email"
+            style={inputStyle}
           />
 
           <input
             value={pass}
             onChange={(e) => setPass(e.target.value)}
-            placeholder="senha (mín. 6)"
             type="password"
-            autoComplete="current-password"
-            style={{
-              height: 42,
-              borderRadius: 10,
-              border: "1px solid #cbd5e1",
-              padding: "0 12px",
-            }}
+            placeholder="Senha"
+            style={inputStyle}
           />
 
           {msg && (
-            <div
-              style={{
-                background: "#fee2e2",
-                border: "1px solid #fecaca",
-                padding: 10,
-                borderRadius: 10,
-                color: "#991b1b",
-                fontSize: 13,
-              }}
-            >
+            <div style={{ color: "red", fontSize: 13, textAlign: "center" }}>
               {msg}
             </div>
           )}
 
-          <button
-            type="submit"
-            style={{
-              height: 44,
-              borderRadius: 12,
-              border: 0,
-              background: "#2563eb",
-              color: "#fff",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            Entrar
-          </button>
+          <button style={primaryBtn}>Entrar</button>
 
           <button
             type="button"
             onClick={onRegister}
-            style={{
-              height: 40,
-              borderRadius: 12,
-              border: "1px solid #cbd5e1",
-              background: "#fff",
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
+            style={secondaryBtn}
           >
             Criar conta
           </button>
@@ -139,3 +93,30 @@ export default function Login({ onRegister }) {
     </div>
   );
 }
+
+const inputStyle = {
+  height: 44,
+  borderRadius: 10,
+  border: "1px solid #ccc",
+  padding: "0 12px",
+  fontSize: 14,
+};
+
+const primaryBtn = {
+  height: 44,
+  borderRadius: 12,
+  border: "none",
+  background: "#2563eb",
+  color: "#fff",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const secondaryBtn = {
+  height: 40,
+  borderRadius: 12,
+  border: "1px solid #ccc",
+  background: "#fff",
+  fontWeight: 600,
+  cursor: "pointer",
+};
