@@ -11,3 +11,57 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   background: #0b1220; /* fallback */
 }
+
+/* ===== Mobile perfection base ===== */
+html, body, #root {
+  height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* evita o template do Vite centralizar tudo no body */
+body {
+  margin: 0;
+  display: block;
+  min-height: 100vh;
+}
+
+/* melhora toque/scroll no mobile */
+button, input, select {
+  touch-action: manipulation;
+}
+
+/* drawer helpers */
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 9998;
+}
+
+.mobile-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: min(86vw, 320px);
+  transform: translateX(-110%);
+  transition: transform 180ms ease;
+  z-index: 9999;
+}
+
+.mobile-drawer.open {
+  transform: translateX(0);
+}
+
+/* melhora scroll horizontal da tabela no mobile */
+.table-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 999px;
+}
