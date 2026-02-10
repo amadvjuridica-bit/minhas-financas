@@ -106,8 +106,6 @@ function colorForIndex(i) {
 
 const TAB = {
   LANCAMENTOS: "lancamentos",
-  PESSOAS: "pessoas",
-  RECORRENTES: "recorrentes",
   CARTOES: "cartoes",
   GRAFICOS: "graficos",
   RESUMO: "resumo",
@@ -262,7 +260,7 @@ export default function FinanceApp() {
     const singles = [];
 
     for (const it of itemsThisMonth) {
-      const isCard = !!it.isCardPurchase; // ⚠️ campo oficial que você já usa no app
+      const isCard = !!it.isCardPurchase;
       if (!isCard) {
         singles.push({ __kind: "single", ...it });
         continue;
@@ -272,7 +270,6 @@ export default function FinanceApp() {
       const pDisplay = displayPersonName(it.personName); // vazio vira "Meu"
       const t = it.type || "expense";
 
-      // ✅ chave do agrupamento
       const key = `${c}__${pDisplay}__${t}`;
 
       if (!groups.has(key)) {
@@ -282,7 +279,7 @@ export default function FinanceApp() {
           type: t,
           category: "Cartão",
           cardName: c,
-          personDisplay: pDisplay, // "Meu" ou nome
+          personDisplay: pDisplay,
           amount: 0,
           count: 0,
           paidAll: true,
@@ -309,7 +306,6 @@ export default function FinanceApp() {
         return String(a.type).localeCompare(String(b.type));
       });
 
-    // mantém itens “normais” na ordem por vencimento e depois os somados do cartão
     return [...singles, ...grouped];
   }, [itemsThisMonth]);
 
@@ -412,7 +408,6 @@ export default function FinanceApp() {
       }
     }
 
-    // reset form
     setAmount("");
     setNote("");
     setIsInstallment(false);
@@ -443,6 +438,31 @@ export default function FinanceApp() {
     await Promise.all(
       list.map((it) =>
         updateDoc(doc(db, "users", userUid, "transactions", it.id), { paid: true })
+      )
+    );
+  }
+
+  // ✅ NOVO: Marcar/Desmarcar pago para um grupo (cartão + pessoa) no mês atual
+  async function setGroupPaidByCardPerson({ cardName, personDisplay, paid }) {
+    if (!userUid) return;
+
+    const c = (cardName || "").trim();
+    const p = (personDisplay || "").trim(); // "Meu" ou nome
+
+    const groupItems = itemsThisMonthBase.filter((it) => {
+      if (!it.isCardPurchase) return false;
+      if (((it.cardName || "").trim()) !== c) return false;
+
+      const itPerson = (it.personName || "").trim();
+      if (p === "Meu") return itPerson === "";
+      return itPerson === p;
+    });
+
+    if (groupItems.length === 0) return;
+
+    await Promise.all(
+      groupItems.map((it) =>
+        updateDoc(doc(db, "users", userUid, "transactions", it.id), { paid: !!paid })
       )
     );
   }
@@ -881,9 +901,13 @@ export default function FinanceApp() {
                         );
                       }
 
-                      // ✅ Grupos de cartão: SOMADOS (1 linha só)
+                      // ✅ Grupos de cartão: SOMADOS (1 linha só) + checkbox pago
                       const status = it.paidAll ? "Pago" : it.paidNone ? "Em aberto" : "Parcial";
                       const tipoTxt = it.type === "income" ? "Receita" : "Despesa";
+
+                      // checkbox: marcado quando TODOS pagos
+                      const checked = !!it.paidAll;
+                      const labelTxt = it.paidAll ? "Pago" : it.paidNone ? "Em aberto" : "Parcial";
 
                       return (
                         <div
@@ -894,9 +918,9 @@ export default function FinanceApp() {
                             borderColor: "#e6eaf2",
                           }}
                         >
-                          <div style={{ color: "#64748b", fontWeight: 900 }}>—</div>
+                          <div style={{ color: "#64748b", fontWeight: 700 }}>—</div>
 
-                          <div style={{ fontWeight: 900 }}>
+                          <div style={{ fontWeight: 800 }}>
                             {it.cardName} • {it.personDisplay}{" "}
                             <span style={{ color: "#64748b", fontWeight: 700 }}>
                               ({it.count} itens)
@@ -906,23 +930,38 @@ export default function FinanceApp() {
                           <div>{tipoTxt}</div>
                           <div>Cartão</div>
 
-                          <div style={{ fontWeight: 1000 }}>
+                          <div style={{ fontWeight: 900 }}>
                             {BRL.format(Number(it.amount || 0))}
                           </div>
 
                           <div>—</div>
-                          <div style={{ fontWeight: 900 }}>
+                          <div style={{ fontWeight: 700 }}>
                             {it.cardName} • {it.personDisplay}
                           </div>
 
-                          <div style={{ fontWeight: 900 }}>{status}</div>
+                          {/* ✅ NOVO: checkbox igual aos demais */}
+                          <div>
+                            <label style={styles.checkboxRowSmall}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() =>
+                                  setGroupPaidByCardPerson({
+                                    cardName: it.cardName,
+                                    personDisplay: it.personDisplay,
+                                    paid: !checked, // se não está 100% pago => marca tudo como pago; se está => desmarca tudo
+                                  })
+                                }
+                              />
+                              <span>{labelTxt}</span>
+                            </label>
+                          </div>
 
                           <div style={styles.rowActions}>
                             <button
                               type="button"
                               style={styles.smallBtn}
                               onClick={() => {
-                                // vai pra aba Cartões com filtro do grupo
                                 setSelectedCardTab(it.cardName);
                                 setPersonFilter(it.personDisplay === "Meu" ? "meu" : it.personDisplay);
                                 setActiveTab(TAB.CARTOES);
@@ -1044,8 +1083,8 @@ export default function FinanceApp() {
                             }}
                           >
                             <div>{venc}</div>
-                            <div style={{ fontWeight: 800 }}>{it.note || "(sem descrição)"}</div>
-                            <div style={{ fontWeight: 1000 }}>{BRL.format(Number(it.amount || 0))}</div>
+                            <div style={{ fontWeight: 700 }}>{it.note || "(sem descrição)"}</div>
+                            <div style={{ fontWeight: 900 }}>{BRL.format(Number(it.amount || 0))}</div>
                             <div>{parcelaTxt}</div>
                             <div>{pessoaTxt}</div>
                             <div>{it.paid ? "Pago" : "Em aberto"}</div>
@@ -1329,6 +1368,8 @@ const styles = {
   buttonPrimary: { height: 42, padding: "0 16px", borderRadius: 12, border: 0, background: "#2563eb", color: "#fff", fontWeight: 1000, cursor: "pointer" },
 
   table: { display: "grid", gap: 8 },
+
+  // ✅ Ajuste: uniformizar tipografia (PC)
   row: {
     display: "grid",
     gridTemplateColumns: "110px 1.4fr 110px 120px 120px 90px 160px 140px 1fr",
@@ -1337,8 +1378,16 @@ const styles = {
     padding: "10px 10px",
     border: "1px solid #eef2f8",
     borderRadius: 12,
+    fontSize: 13,
+    color: "#0f172a",
   },
-  rowHeader: { background: "#f8fafc", fontSize: 12, color: "#475569", fontWeight: 1000 },
+  rowHeader: {
+    background: "#f8fafc",
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: 1000,
+  },
+
   rowActions: { display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" },
   smallBtn: { height: 34, padding: "0 10px", borderRadius: 10, border: "1px solid #dbe3f0", background: "#fff", cursor: "pointer", fontWeight: 900, fontSize: 12 },
   empty: { color: "#64748b", padding: 10, fontWeight: 800 },
