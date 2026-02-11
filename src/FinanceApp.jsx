@@ -76,6 +76,11 @@ function displayPersonName(p) {
   const s = (p || "").trim();
   return s ? s : "Meu";
 }
+function toVencBR(dueDateStr) {
+  const d = new Date(dueDateStr);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
 
 /* ===================== CORES (GRÁFICOS) ===================== */
 
@@ -248,13 +253,7 @@ export default function FinanceApp() {
   }, [itemsThisMonthBase]);
 
   /* ===================== ✅ LANCAMENTOS: AGRUPAR CARTÃO + SOMAR ===================== */
-  /**
-   * REGRA:
-   * - Itens que NÃO são compra no cartão: aparecem item por item (normal).
-   * - Itens que SÃO compra no cartão: NÃO aparecem item por item.
-   *   Eles aparecem SOMADOS por (cardName + pessoa + tipo).
-   * - O detalhado fica SOMENTE na aba Cartões.
-   */
+
   const groupedForLancamentos = useMemo(() => {
     const groups = new Map();
     const singles = [];
@@ -267,7 +266,7 @@ export default function FinanceApp() {
       }
 
       const c = (it.cardName || "").trim() || "—";
-      const pDisplay = displayPersonName(it.personName); // vazio vira "Meu"
+      const pDisplay = displayPersonName(it.personName);
       const t = it.type || "expense";
 
       const key = `${c}__${pDisplay}__${t}`;
@@ -442,7 +441,7 @@ export default function FinanceApp() {
     );
   }
 
-  // ✅ NOVO: Marcar/Desmarcar pago para um grupo (cartão + pessoa) no mês atual
+  // Marcar/Desmarcar pago para um grupo (cartão + pessoa) no mês atual
   async function setGroupPaidByCardPerson({ cardName, personDisplay, paid }) {
     if (!userUid) return;
 
@@ -509,6 +508,44 @@ export default function FinanceApp() {
 
     return list.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
   }, [itemsThisMonthBase, selectedCardTab, personFilter]);
+
+  // ✅ NOVO: vencimento (dia) por cartão (modo do dia no mês atual)
+  const cardDueDayByCard = useMemo(() => {
+    const map = new Map(); // cardName -> { day -> count }
+    for (const it of itemsThisMonthBase) {
+      if (!it.isCardPurchase) continue;
+      const c = (it.cardName || "").trim();
+      if (!c) continue;
+
+      const d = new Date(it.dueDate);
+      if (Number.isNaN(d.getTime())) continue;
+
+      const day = d.getDate();
+      if (!map.has(c)) map.set(c, new Map());
+      const inner = map.get(c);
+      inner.set(day, (inner.get(day) || 0) + 1);
+    }
+
+    const result = new Map(); // cardName -> bestDay
+    for (const [c, inner] of map.entries()) {
+      let bestDay = null;
+      let bestCount = -1;
+      for (const [day, count] of inner.entries()) {
+        if (count > bestCount) {
+          bestCount = count;
+          bestDay = day;
+        }
+      }
+      if (bestDay != null) result.set(c, bestDay);
+    }
+    return result;
+  }, [itemsThisMonthBase]);
+
+  // ✅ NOVO: vencimento (dia) do cartão selecionado (para mostrar no header)
+  const selectedCardDueDay = useMemo(() => {
+    if (!selectedCardTab) return null;
+    return cardDueDayByCard.get(selectedCardTab) ?? null;
+  }, [selectedCardTab, cardDueDayByCard]);
 
   const cardInvoiceTotals = useMemo(() => {
     let total = 0;
@@ -862,8 +899,7 @@ export default function FinanceApp() {
                     {groupedForLancamentos.map((it) => {
                       // ✅ Itens normais (não-cartão): item por item
                       if (it.__kind === "single") {
-                        const d = new Date(it.dueDate);
-                        const venc = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+                        const venc = toVencBR(it.dueDate);
 
                         const parcelaTxt = it.installment
                           ? `${it.installment.index}/${it.installment.total}`
@@ -873,25 +909,34 @@ export default function FinanceApp() {
                           ? `${(it.cardName || "").trim() || "—"} • ${displayPersonName(it.personName)}`
                           : "-";
 
+                        const isIncome = it.type === "income";
+
                         return (
                           <div key={it.id} style={styles.row}>
                             <div>{venc}</div>
                             <div style={{ fontWeight: 700 }}>{it.note || "(sem descrição)"}</div>
-                            <div>{it.type === "income" ? "Receita" : "Despesa"}</div>
+                            <div>{isIncome ? "Receita" : "Despesa"}</div>
                             <div>{it.category}</div>
                             <div style={{ fontWeight: 900 }}>{BRL.format(Number(it.amount || 0))}</div>
                             <div>{parcelaTxt}</div>
                             <div>{cardTxt}</div>
+
+                            {/* ✅ REGRA: receita não mostra pago/não pago */}
                             <div>
-                              <label style={styles.checkboxRowSmall}>
-                                <input
-                                  type="checkbox"
-                                  checked={!!it.paid}
-                                  onChange={() => togglePaid(it.id, it.paid)}
-                                />
-                                <span>{it.paid ? "Pago" : "Em aberto"}</span>
-                              </label>
+                              {isIncome ? (
+                                <span style={{ color: "#64748b", fontWeight: 700 }}>—</span>
+                              ) : (
+                                <label style={styles.checkboxRowSmall}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!it.paid}
+                                    onChange={() => togglePaid(it.id, it.paid)}
+                                  />
+                                  <span>{it.paid ? "Pago" : "Em aberto"}</span>
+                                </label>
+                              )}
                             </div>
+
                             <div style={styles.rowActions}>
                               <button type="button" style={styles.smallBtn} onClick={() => removeItem(it.id)}>
                                 Excluir
@@ -901,11 +946,10 @@ export default function FinanceApp() {
                         );
                       }
 
-                      // ✅ Grupos de cartão: SOMADOS (1 linha só) + checkbox pago
-                      const status = it.paidAll ? "Pago" : it.paidNone ? "Em aberto" : "Parcial";
-                      const tipoTxt = it.type === "income" ? "Receita" : "Despesa";
+                      // ✅ Grupos de cartão: SOMADOS (1 linha só) + checkbox pago (somente se for despesa)
+                      const isIncomeGroup = it.type === "income";
+                      const tipoTxt = isIncomeGroup ? "Receita" : "Despesa";
 
-                      // checkbox: marcado quando TODOS pagos
                       const checked = !!it.paidAll;
                       const labelTxt = it.paidAll ? "Pago" : it.paidNone ? "Em aberto" : "Parcial";
 
@@ -939,22 +983,26 @@ export default function FinanceApp() {
                             {it.cardName} • {it.personDisplay}
                           </div>
 
-                          {/* ✅ NOVO: checkbox igual aos demais */}
+                          {/* ✅ REGRA: receita não mostra pago/não pago */}
                           <div>
-                            <label style={styles.checkboxRowSmall}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() =>
-                                  setGroupPaidByCardPerson({
-                                    cardName: it.cardName,
-                                    personDisplay: it.personDisplay,
-                                    paid: !checked, // se não está 100% pago => marca tudo como pago; se está => desmarca tudo
-                                  })
-                                }
-                              />
-                              <span>{labelTxt}</span>
-                            </label>
+                            {isIncomeGroup ? (
+                              <span style={{ color: "#64748b", fontWeight: 700 }}>—</span>
+                            ) : (
+                              <label style={styles.checkboxRowSmall}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() =>
+                                    setGroupPaidByCardPerson({
+                                      cardName: it.cardName,
+                                      personDisplay: it.personDisplay,
+                                      paid: !checked,
+                                    })
+                                  }
+                                />
+                                <span>{labelTxt}</span>
+                              </label>
+                            )}
                           </div>
 
                           <div style={styles.rowActions}>
@@ -997,25 +1045,34 @@ export default function FinanceApp() {
                   </div>
                 ) : (
                   <>
+                    {/* ✅ AGORA MOSTRA O VENCIMENTO NO NOME DO CARTÃO */}
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-                      {cardsFound.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => {
-                            setSelectedCardTab(c);
-                            setPersonFilter("");
-                          }}
-                          style={selectedCardTab === c ? styles.pillActive : styles.pill}
-                        >
-                          {c}
-                        </button>
-                      ))}
+                      {cardsFound.map((c) => {
+                        const day = cardDueDayByCard.get(c) ?? null;
+                        const label = day ? `${c} (venc. ${pad2(day)})` : c;
+
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCardTab(c);
+                              setPersonFilter("");
+                            }}
+                            style={selectedCardTab === c ? styles.pillActive : styles.pill}
+                            title={day ? `Vencimento: dia ${pad2(day)}` : "Sem vencimento detectado no mês"}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
                       <div style={styles.cardSmall}>
-                        <div style={styles.cardLabel}>Fatura (mês) — Total</div>
+                        <div style={styles.cardLabel}>
+                          Fatura (mês) — Total{selectedCardDueDay ? ` (venc. ${pad2(selectedCardDueDay)})` : ""}
+                        </div>
                         <div style={styles.cardValue}>{BRL.format(cardInvoiceTotals.total)}</div>
                       </div>
                       <div style={styles.cardSmall}>
@@ -1046,7 +1103,10 @@ export default function FinanceApp() {
 
               {cardsFound.length > 0 && (
                 <section style={styles.card}>
-                  <h2 style={styles.h2}>Lançamentos do cartão — {selectedCardTab}</h2>
+                  <h2 style={styles.h2}>
+                    Lançamentos do cartão — {selectedCardTab}
+                    {selectedCardDueDay ? ` (venc. dia ${pad2(selectedCardDueDay)})` : ""}
+                  </h2>
 
                   {cardItemsThisMonth.length === 0 ? (
                     <div style={styles.empty}>Nenhuma compra registrada neste cartão (no mês filtrado).</div>
@@ -1069,8 +1129,7 @@ export default function FinanceApp() {
                       </div>
 
                       {cardItemsThisMonth.map((it) => {
-                        const d = new Date(it.dueDate);
-                        const venc = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+                        const venc = toVencBR(it.dueDate);
                         const parcelaTxt = it.installment ? `${it.installment.index}/${it.installment.total}` : "-";
                         const pessoaTxt = displayPersonName(it.personName);
 
@@ -1093,6 +1152,7 @@ export default function FinanceApp() {
                                 type="button"
                                 style={styles.smallBtn}
                                 onClick={() => togglePaid(it.id, it.paid)}
+z
                               >
                                 {it.paid ? "Desmarcar" : "Marcar pago"}
                               </button>
@@ -1183,8 +1243,7 @@ export default function FinanceApp() {
                     </div>
 
                     {selectedCategoryItems.map((it) => {
-                      const d = new Date(it.dueDate);
-                      const venc = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+                      const venc = toVencBR(it.dueDate);
                       return (
                         <div key={it.id} style={{ ...styles.row, gridTemplateColumns: "140px 1.6fr 140px 140px 140px" }}>
                           <div>{venc}</div>
@@ -1368,8 +1427,6 @@ const styles = {
   buttonPrimary: { height: 42, padding: "0 16px", borderRadius: 12, border: 0, background: "#2563eb", color: "#fff", fontWeight: 1000, cursor: "pointer" },
 
   table: { display: "grid", gap: 8 },
-
-  // ✅ Ajuste: uniformizar tipografia (PC)
   row: {
     display: "grid",
     gridTemplateColumns: "110px 1.4fr 110px 120px 120px 90px 160px 140px 1fr",
@@ -1381,13 +1438,7 @@ const styles = {
     fontSize: 13,
     color: "#0f172a",
   },
-  rowHeader: {
-    background: "#f8fafc",
-    fontSize: 12,
-    color: "#475569",
-    fontWeight: 1000,
-  },
-
+  rowHeader: { background: "#f8fafc", fontSize: 12, color: "#475569", fontWeight: 1000 },
   rowActions: { display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" },
   smallBtn: { height: 34, padding: "0 10px", borderRadius: 10, border: "1px solid #dbe3f0", background: "#fff", cursor: "pointer", fontWeight: 900, fontSize: 12 },
   empty: { color: "#64748b", padding: 10, fontWeight: 800 },
