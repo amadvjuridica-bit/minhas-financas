@@ -16,20 +16,19 @@ export default function App() {
       setUser(currentUser);
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
   if (loading) {
-    return <div style={{ textAlign: "center", marginTop: 50 }}>Carregando...</div>;
+    return (
+      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", fontFamily: "Inter, Arial" }}>
+        Carregando...
+      </div>
+    );
   }
 
-  // Usuário logado → Dashboard
-  if (user) {
-    return <FinanceApp />;
-  }
+  if (user) return <FinanceApp />;
 
-  // Usuário não logado
   if (screen === "register") {
     return <Register onBack={() => setScreen("login")} />;
   }

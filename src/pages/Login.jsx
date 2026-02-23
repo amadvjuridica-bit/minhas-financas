@@ -1,178 +1,97 @@
 // src/pages/Login.jsx
 import React, { useState } from "react";
 import { auth } from "../firebase";
-import {
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-} from "firebase/auth";
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
 import logo from "../assets/logo.png";
+import "./Login.css";
 
 export default function Login({ onRegister }) {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function handleLogin(e) {
     e.preventDefault();
     setMsg("");
-
+    setBusy(true);
     try {
       await signInWithEmailAndPassword(auth, email, pass);
     } catch (err) {
       console.error("AUTH ERROR:", err);
       setMsg("E-mail ou senha inválidos.");
+      setBusy(false);
     }
   }
 
   async function handleReset() {
     setMsg("");
-
-    if (!email) {
-      setMsg("Informe seu e-mail acima para recuperar a senha.");
-      return;
-    }
-
+    if (!email) return setMsg("Informe seu e-mail para recuperar a senha.");
     try {
+      setBusy(true);
       await sendPasswordResetEmail(auth, email);
-      setMsg("📧 Link de recuperação enviado para seu e-mail.");
+      setMsg("Link de recuperação enviado para seu e-mail.");
     } catch (err) {
       console.error("RESET ERROR:", err);
       setMsg("Erro ao enviar e-mail de recuperação.");
+    } finally {
+      setBusy(false);
     }
   }
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "linear-gradient(135deg, #0b1220 0%, #0f1b35 60%, #0b1220 100%)",
-        padding: 20,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          background: "#fff",
-          borderRadius: 16,
-          padding: "28px 26px 26px",
-          boxShadow: "0 25px 60px rgba(0,0,0,0.35)",
-        }}
-      >
-        {/* LOGO */}
-        <div style={{ textAlign: "center", marginBottom: 18 }}>
-          <img
-            src={logo}
-            alt="Logo"
-            style={{ width: 160, marginBottom: 8 }}
-          />
+    <div className="loginBg">
+      <div className="loginCard">
+        {/* LOGO GRANDE (RETÂNGULO) */}
+        <div className="logoBox">
+          <img src={logo} alt="Logo" className="logoImg" />
         </div>
 
-        <h2 style={{ textAlign: "center", marginBottom: 20, color: "#0b1220" }}>
-          Entrar
-        </h2>
+        <h1 className="title">Entrar</h1>
 
-        <form onSubmit={handleLogin} style={{ display: "grid", gap: 12 }}>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="E-mail"
-            type="email"
-            required
-            style={{
-              height: 44,
-              borderRadius: 10,
-              border: "1px solid #cbd5e1",
-              padding: "0 14px",
-              fontSize: 15,
-            }}
-          />
+        <form onSubmit={handleLogin} className="form">
+          <div className="field">
+            <label className="label">E-mail</label>
+            <input
+              className="input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="seuemail@exemplo.com"
+              type="email"
+              required
+              autoComplete="email"
+            />
+          </div>
 
-          <input
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            placeholder="Senha"
-            type="password"
-            required
-            style={{
-              height: 44,
-              borderRadius: 10,
-              border: "1px solid #cbd5e1",
-              padding: "0 14px",
-              fontSize: 15,
-            }}
-          />
+          <div className="field">
+            <label className="label">Senha</label>
+            <input
+              className="input"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+              placeholder="••••••••"
+              type="password"
+              required
+              autoComplete="current-password"
+            />
 
-          {/* ESQUECI MINHA SENHA */}
-          <div style={{ textAlign: "right", marginTop: -6 }}>
-            <button
-              type="button"
-              onClick={handleReset}
-              style={{
-                background: "transparent",
-                border: 0,
-                color: "#2563eb",
-                fontWeight: 700,
-                cursor: "pointer",
-                padding: 0,
-                fontSize: 14,
-              }}
-            >
+            {/* ESQUECI SENHA (embaixo da senha, à direita) */}
+            <button type="button" className="forgot" onClick={handleReset} disabled={busy}>
               Esqueci minha senha
             </button>
           </div>
 
-          {msg && (
-            <div
-              style={{
-                background: "#eef2ff",
-                border: "1px solid #c7d2fe",
-                padding: 10,
-                borderRadius: 10,
-                color: "#1e3a8a",
-                fontSize: 14,
-                textAlign: "center",
-              }}
-            >
-              {msg}
-            </div>
-          )}
+          {msg && <div className="alert">{msg}</div>}
 
-          <button
-            type="submit"
-            style={{
-              height: 46,
-              borderRadius: 12,
-              border: 0,
-              background: "#2563eb",
-              color: "#fff",
-              fontWeight: 900,
-              fontSize: 16,
-              cursor: "pointer",
-              marginTop: 6,
-            }}
-          >
-            Entrar
+          <button type="submit" className="btnPrimary" disabled={busy}>
+            {busy ? "Entrando..." : "Entrar"}
           </button>
 
-          <button
-            type="button"
-            onClick={onRegister}
-            style={{
-              height: 40,
-              borderRadius: 12,
-              border: "1px solid #cbd5e1",
-              background: "#fff",
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
+          <button type="button" className="btnSecondary" onClick={onRegister} disabled={busy}>
             Criar conta
           </button>
+
+          <div className="footerHint">Segurança • Simples • Rápido</div>
         </form>
       </div>
     </div>

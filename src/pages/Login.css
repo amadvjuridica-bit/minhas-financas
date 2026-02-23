@@ -1,0 +1,199 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap");
+
+:root{
+  --bg1:#081225;
+  --bg2:#0b1a33;
+
+  --card:#ffffff;
+  --text:#0f172a;
+  --muted:#6b7280;
+
+  --border:#e6eaf2;
+
+  /* Inputs */
+  --inputBg:#f4f6fa;
+  --inputBorder:#d6dde9;
+
+  /* Paleta corporativa (menos “infantil”) */
+  --primary:#0f2f6b;         /* azul marinho corporativo */
+  --primaryHover:#0c2553;
+
+  --shadow: 0 22px 65px rgba(0,0,0,0.35);
+}
+
+*{ box-sizing:border-box; }
+html, body{ height:100%; }
+body{
+  margin:0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.loginBg{
+  min-height:100vh;
+  display:grid;
+  place-items:center;
+  padding:26px;
+  background:
+    radial-gradient(1000px 650px at 20% 15%, rgba(15,47,107,.18), transparent 60%),
+    radial-gradient(900px 650px at 80% 25%, rgba(99,102,241,.10), transparent 55%),
+    linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 55%, var(--bg1) 100%);
+}
+
+.loginCard{
+  width:100%;
+  max-width: 560px;
+  background: var(--card);
+  border:1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 30px 22px;
+  box-shadow: var(--shadow);
+}
+
+/* ✅ LOGO GRANDE (igual seu retângulo vermelho) */
+.logoBox{
+  height: 92px;              /* controla a altura do retângulo */
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+  margin-bottom: 14px;
+}
+
+.logoImg{
+  width: 100%;
+  max-width: 430px;          /* controla “largura” da área da logo */
+  height: 78px;              /* tamanho real da logo dentro */
+  object-fit: contain;       /* não distorce */
+  display:block;
+}
+
+/* Título */
+.title{
+  margin: 6px 0 18px;
+  text-align:center;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+/* Form */
+.form{
+  display:grid;
+  gap: 14px;
+}
+
+.field{
+  display:grid;
+  gap: 8px;
+}
+
+.label{
+  font-size: 12px;
+  font-weight: 700;
+  color: #374151;
+}
+
+.input{
+  height: 46px;
+  border-radius: 10px;
+  border: 1px solid var(--inputBorder);
+  background: var(--inputBg);
+  padding: 0 14px;
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.input:focus{
+  border-color: rgba(15,47,107,0.55);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(15,47,107,0.12);
+}
+
+/* Esqueci */
+.forgot{
+  justify-self:end;
+  margin-top: 2px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.forgot:hover{ text-decoration: underline; }
+.forgot:disabled{ opacity:.6; cursor:not-allowed; text-decoration:none; }
+
+/* Alerta */
+.alert{
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: #111827;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align:center;
+}
+
+/* ✅ BOTÕES CORPORATIVOS (menos infantis) */
+.btnPrimary{
+  height: 46px;
+  border-radius: 10px;       /* menos arredondado */
+  border: 1px solid rgba(0,0,0,0.08);
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: .02em;
+  cursor: pointer;
+  box-shadow: 0 10px 18px rgba(15,47,107,0.18);
+  transition: transform .10s ease, background .15s ease, box-shadow .15s ease;
+}
+
+.btnPrimary:hover{
+  background: var(--primaryHover);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(15,47,107,0.22);
+}
+
+.btnPrimary:active{
+  transform: translateY(0px);
+  box-shadow: 0 8px 16px rgba(15,47,107,0.16);
+}
+
+.btnPrimary:disabled{ opacity:.75; cursor:not-allowed; transform:none; }
+
+.btnSecondary{
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid #d7deea;
+  background: #fff;
+  color: #111827;
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: background .15s ease, transform .10s ease;
+}
+
+.btnSecondary:hover{
+  background: #f8fafc;
+  transform: translateY(-1px);
+}
+
+.btnSecondary:active{ transform: translateY(0px); }
+.btnSecondary:disabled{ opacity:.75; cursor:not-allowed; transform:none; }
+
+.footerHint{
+  margin-top: 10px;
+  font-size: 11px;
+  color: #9ca3af;
+  text-align:center;
+}
