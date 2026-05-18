@@ -801,6 +801,48 @@ export default function FinanceApp() {
     await deleteDoc(ref);
   }
 
+  async function removeCardItem(it) {
+    if (!userUid || !it?.id) return;
+
+    const installment = it.installment;
+    if (!installment?.groupId) {
+      await removeItem(it.id);
+      return;
+    }
+
+    const choice = window.prompt(
+      "Excluir esta despesa parcelada?\n\n" +
+        "1 - Excluir somente este mes\n" +
+        "2 - Excluir este mes e todos os proximos meses\n\n" +
+        "Digite 1 ou 2."
+    );
+
+    if (choice === null) return;
+
+    const normalizedChoice = String(choice).trim();
+    if (normalizedChoice === "1") {
+      await removeItem(it.id);
+      return;
+    }
+
+    if (normalizedChoice !== "2") {
+      alert("Opcao invalida. Nada foi excluido.");
+      return;
+    }
+
+    const groupId = installment.groupId;
+    const currentIndex = Number(installment.index || 0);
+    const targets = items.filter((row) => {
+      const rowInstallment = row.installment;
+      if (!rowInstallment || rowInstallment.groupId !== groupId) return false;
+      return Number(rowInstallment.index || 0) >= currentIndex;
+    });
+
+    await Promise.all(
+      targets.map((row) => deleteDoc(doc(db, "users", userUid, "transactions", row.id)))
+    );
+  }
+
   // ✅ Edição “rápida” inline do VALOR (clica no valor -> vira campo)
   const [editingAmountId, setEditingAmountId] = useState(null);
   const [editingAmountRaw, setEditingAmountRaw] = useState("");
@@ -2571,7 +2613,7 @@ export default function FinanceApp() {
                                 <ActionBtn icon="✓" label="Marcar pago" tone="primary" title="Marcar como Pago" onClick={() => togglePaid(it.id, it.paid)} />
                               )}
 
-                              <ActionBtn icon="🗑" label="Excluir" tone="danger" title="Excluir" onClick={() => removeItem(it.id)} />
+                              <ActionBtn icon="🗑" label="Excluir" tone="danger" title="Excluir" onClick={() => removeCardItem(it)} />
                             </div>
                           </div>
                         );
