@@ -236,6 +236,9 @@ export default function FinanceApp() {
   const [personFilter, setPersonFilter] = useState("");
   const [cardSettings, setCardSettings] = useState([]);
   const [cardDueDraft, setCardDueDraft] = useState(10);
+  const [invoiceRefDraft, setInvoiceRefDraft] = useState("");
+  const [invoiceCheckedUntilDraft, setInvoiceCheckedUntilDraft] = useState("");
+  const [invoiceNoteDraft, setInvoiceNoteDraft] = useState("");
 
   // Gráficos
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -1100,10 +1103,18 @@ export default function FinanceApp() {
     return cardDueDayByCard.get(selectedCardTab) ?? cardDueDayByNormalizedName.get(normalizeStr(selectedCardTab)) ?? null;
   }, [selectedCardTab, cardDueDayByCard, cardDueDayByNormalizedName]);
 
+  const selectedCardSetting = useMemo(() => {
+    if (!selectedCardTab) return null;
+    return cardSettingsByName.get(normalizeStr(selectedCardTab)) ?? null;
+  }, [selectedCardTab, cardSettingsByName]);
+
   useEffect(() => {
     if (!selectedCardTab) return;
     setCardDueDraft(selectedCardDueDay ?? Number(dueDay || 10));
-  }, [selectedCardTab, selectedCardDueDay, dueDay]);
+    setInvoiceRefDraft(selectedCardSetting?.invoiceRef || "");
+    setInvoiceCheckedUntilDraft(selectedCardSetting?.invoiceCheckedUntil || "");
+    setInvoiceNoteDraft(selectedCardSetting?.invoiceNote || "");
+  }, [selectedCardTab, selectedCardDueDay, dueDay, selectedCardSetting]);
 
   async function saveSelectedCardDueDay() {
     if (!userUid || !selectedCardTab) return;
@@ -1119,6 +1130,9 @@ export default function FinanceApp() {
     const payload = {
       name,
       dueDay: due,
+      invoiceRef: invoiceRefDraft.trim(),
+      invoiceCheckedUntil: invoiceCheckedUntilDraft,
+      invoiceNote: invoiceNoteDraft.trim(),
       updatedAt: new Date().toISOString(),
     };
 
@@ -2590,29 +2604,79 @@ export default function FinanceApp() {
                       </div>
                     </section>
 
-                    <div className="box" style={{ marginTop: 10 }}>
-                      <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "1fr 180px 140px" }}>
+                    <div className="box" style={{ marginTop: 10, padding: 10 }}>
+                      <div
+                        className="grid"
+                        style={{
+                          gridTemplateColumns: isMobile
+                            ? "1fr"
+                            : "1.1fr 120px minmax(150px, 0.8fr) 170px minmax(220px, 1.4fr) 110px",
+                          gap: 8,
+                          alignItems: "end",
+                        }}
+                      >
                         <div>
                           <div className="label">Vencimento do cartao</div>
                           <div className="hint">
-                            Este dia sera usado automaticamente nos novos lancamentos do cartao {selectedCardTab}.
+                            Controle compacto da proxima fatura.
                           </div>
                         </div>
 
-                        <select
-                          value={cardDueDraft}
-                          onChange={(e) => setCardDueDraft(Number(e.target.value))}
-                          className="select"
-                        >
-                          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                            <option key={d} value={d}>{d}</option>
-                          ))}
-                        </select>
+                        <div className="field">
+                          <label className="label">Dia</label>
+                          <select
+                            value={cardDueDraft}
+                            onChange={(e) => setCardDueDraft(Number(e.target.value))}
+                            className="select"
+                          >
+                            {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                              <option key={d} value={d}>{d}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="field">
+                          <label className="label">Fatura</label>
+                          <input
+                            value={invoiceRefDraft}
+                            onChange={(e) => setInvoiceRefDraft(e.target.value)}
+                            className="input"
+                            placeholder="Jun/2026"
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label className="label">Conferido ate</label>
+                          <input
+                            type="date"
+                            value={invoiceCheckedUntilDraft}
+                            onChange={(e) => setInvoiceCheckedUntilDraft(e.target.value)}
+                            className="input"
+                          />
+                        </div>
+
+                        <div className="field">
+                          <label className="label">Obs.</label>
+                          <input
+                            value={invoiceNoteDraft}
+                            onChange={(e) => setInvoiceNoteDraft(e.target.value)}
+                            className="input"
+                            placeholder="Ex: planilha ate dia 16"
+                          />
+                        </div>
 
                         <button type="button" className="btnPrimary" onClick={saveSelectedCardDueDay}>
                           Salvar
                         </button>
                       </div>
+
+                      {(selectedCardSetting?.invoiceRef || selectedCardSetting?.invoiceCheckedUntil || selectedCardSetting?.invoiceNote) && (
+                        <div className="hint" style={{ marginTop: 6 }}>
+                          {selectedCardSetting?.invoiceRef ? `Fatura ${selectedCardSetting.invoiceRef}` : "Fatura sem referencia"}
+                          {selectedCardSetting?.invoiceCheckedUntil ? ` • conferido ate ${toBRFromYMD(selectedCardSetting.invoiceCheckedUntil)}` : ""}
+                          {selectedCardSetting?.invoiceNote ? ` • ${selectedCardSetting.invoiceNote}` : ""}
+                        </div>
+                      )}
                     </div>
 
                     <div style={{ marginTop: 10 }}>
