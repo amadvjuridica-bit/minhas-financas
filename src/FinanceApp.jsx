@@ -59,6 +59,12 @@ function ymd(dateObj) {
   const d = pad2(dateObj.getDate());
   return `${y}-${m}-${d}`;
 }
+function parseYMDLocal(ymdStr) {
+  const s = String(ymdStr || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!match) return new Date(s);
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
 function uid() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -67,14 +73,14 @@ function displayPersonName(p) {
   return s ? s : "Meu";
 }
 function toVencBR(dueDateStr) {
-  const d = new Date(dueDateStr);
+  const d = parseYMDLocal(dueDateStr);
   if (Number.isNaN(d.getTime())) return "—";
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 function toBRFromYMD(ymdStr) {
   const s = String(ymdStr || "").trim();
   if (!s) return "—";
-  const d = new Date(s);
+  const d = parseYMDLocal(s);
   if (Number.isNaN(d.getTime())) return "—";
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
@@ -509,13 +515,13 @@ export default function FinanceApp() {
 
   const itemsThisMonthBase = useMemo(() => {
     return items.filter((it) => {
-      const d = new Date(it.dueDate);
+      const d = parseYMDLocal(it.dueDate);
       return d.getFullYear() === year && d.getMonth() === monthIndex;
     });
   }, [items, year, monthIndex]);
 
   const itemsThisMonth = useMemo(() => {
-    let list = [...itemsThisMonthBase].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+    let list = [...itemsThisMonthBase].sort((a, b) => parseYMDLocal(a.dueDate) - parseYMDLocal(b.dueDate));
     if (onlyOpenInstallments) list = list.filter((it) => it.installment && !it.paid);
     return list;
   }, [itemsThisMonthBase, onlyOpenInstallments]);
@@ -546,7 +552,7 @@ export default function FinanceApp() {
       let ownerExpense = 0;
 
       for (const it of items) {
-        const d = new Date(it.dueDate);
+        const d = parseYMDLocal(it.dueDate);
         if (Number.isNaN(d.getTime())) continue;
         if (d.getFullYear() !== targetYear || d.getMonth() !== targetMonth0) continue;
         if (it.type !== "expense") continue;
@@ -726,7 +732,7 @@ export default function FinanceApp() {
     if (!selectedCategory) return [];
     return expensesThisMonth
       .filter((it) => (it.category || "Outros") === selectedCategory)
-      .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+      .sort((a, b) => parseYMDLocal(a.dueDate) - parseYMDLocal(b.dueDate));
   }, [expensesThisMonth, selectedCategory]);
 
   /* ===================== ACTIONS (transactions) ===================== */
@@ -1058,7 +1064,7 @@ export default function FinanceApp() {
       if (!c) continue;
       if (cardSettingsByName.has(normalizeStr(c))) continue;
 
-      const d = new Date(it.dueDate);
+      const d = parseYMDLocal(it.dueDate);
       if (Number.isNaN(d.getTime())) continue;
 
       const day = d.getDate();
@@ -1091,8 +1097,8 @@ export default function FinanceApp() {
 
   const selectedCardDueDay = useMemo(() => {
     if (!selectedCardTab) return null;
-    return cardDueDayByCard.get(selectedCardTab) ?? null;
-  }, [selectedCardTab, cardDueDayByCard]);
+    return cardDueDayByCard.get(selectedCardTab) ?? cardDueDayByNormalizedName.get(normalizeStr(selectedCardTab)) ?? null;
+  }, [selectedCardTab, cardDueDayByCard, cardDueDayByNormalizedName]);
 
   useEffect(() => {
     if (!selectedCardTab) return;
@@ -1124,6 +1130,23 @@ export default function FinanceApp() {
         createdAt: new Date().toISOString(),
       });
     }
+
+    const cardTransactions = items.filter((it) => {
+      if (!it.isCardPurchase || !it.id) return false;
+      return normalizeStr(it.cardName) === normalizeStr(name);
+    });
+
+    await Promise.all(
+      cardTransactions.map((it) => {
+        const currentDue = parseYMDLocal(it.dueDate);
+        if (Number.isNaN(currentDue.getTime())) return Promise.resolve();
+
+        const nextDue = safeDate(currentDue.getFullYear(), currentDue.getMonth(), due);
+        return updateDoc(doc(db, "users", userUid, "transactions", it.id), {
+          dueDate: ymd(nextDue),
+        });
+      })
+    );
   }
 
   const cardInvoiceTotals = useMemo(() => {
@@ -1471,6 +1494,15 @@ export default function FinanceApp() {
   const formCardDueDay = isCardPurchase
     ? (cardDueDayByNormalizedName.get(normalizeStr(cardName)) ?? null)
     : null;
+  const cardSortOptions = [
+    { key: "dueDate", label: "Vencimento" },
+    { key: "purchaseDate", label: "Data da compra" },
+    { key: "note", label: "Descricao" },
+    { key: "amount", label: "Valor" },
+    { key: "installment", label: "Parcela" },
+    { key: "person", label: "Pessoa" },
+    { key: "status", label: "Status" },
+  ];
 
   /* ===================== UI ===================== */
 
@@ -2649,6 +2681,35 @@ export default function FinanceApp() {
                       <button type="button" className="btn" onClick={exportCartoesPDF} disabled={!selectedCardTab}>
                         Baixar PDF (A4)
                       </button>
+                    </div>
+                  </div>
+
+                  <div className="box" style={{ marginBottom: 10 }}>
+                    <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "1fr 180px" }}>
+                      <div className="field">
+                        <label className="label">Ordenar por</label>
+                        <select
+                          value={sortCards.key}
+                          onChange={(e) => setSortCards((s) => ({ ...s, key: e.target.value }))}
+                          className="select"
+                        >
+                          {cardSortOptions.map((opt) => (
+                            <option key={opt.key} value={opt.key}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="field">
+                        <label className="label">Direcao</label>
+                        <select
+                          value={sortCards.dir}
+                          onChange={(e) => setSortCards((s) => ({ ...s, dir: e.target.value }))}
+                          className="select"
+                        >
+                          <option value="asc">Crescente</option>
+                          <option value="desc">Decrescente</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
 
