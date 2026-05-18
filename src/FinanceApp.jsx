@@ -153,6 +153,17 @@ function parseBRLInput(raw) {
   return { ok: true, value: Number(n.toFixed(2)) };
 }
 
+function formatBRLTyping(raw) {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  const cents = Number(digits || "0");
+  return BRL.format(cents / 100);
+}
+
+function capitalizeFirstWord(raw) {
+  const s = String(raw ?? "");
+  return s.replace(/^(\s*)(\p{L})/u, (_, spaces, first) => `${spaces}${first.toLocaleUpperCase("pt-BR")}`);
+}
+
 /* ===================== CHART COLORS ===================== */
 
 const CHART_COLORS = ["#1D4ED8", "#0EA5E9", "#16A34A", "#F59E0B", "#DC2626", "#7C3AED", "#0F766E", "#334155"];
@@ -239,6 +250,7 @@ export default function FinanceApp() {
   const [invoiceRefDraft, setInvoiceRefDraft] = useState("");
   const [invoiceCheckedUntilDraft, setInvoiceCheckedUntilDraft] = useState("");
   const [invoiceNoteDraft, setInvoiceNoteDraft] = useState("");
+  const [cardSettingsSaveStatus, setCardSettingsSaveStatus] = useState("");
 
   // Gráficos
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -743,8 +755,9 @@ export default function FinanceApp() {
   async function handleAdd(e) {
     e.preventDefault();
 
-    const val = Number(String(amount).replace(",", "."));
-    if (!val || val <= 0) {
+    const parsedAmount = parseBRLInput(amount);
+    const val = parsedAmount.value;
+    if (!parsedAmount.ok || !val || val <= 0) {
       alert("Informe um valor válido.");
       return;
     }
@@ -772,7 +785,7 @@ export default function FinanceApp() {
         type,
         amount: Number(val.toFixed(2)),
         category,
-        note: note?.trim() || "",
+        note: capitalizeFirstWord(note)?.trim() || "",
         dueDate: ymd(baseDue),
         paid: false,
         installment: null,
@@ -795,7 +808,7 @@ export default function FinanceApp() {
           type,
           amount: perInstallment,
           category,
-          note: note?.trim() || "",
+          note: capitalizeFirstWord(note)?.trim() || "",
           dueDate: ymd(d),
           paid: i === 0 ? Boolean(installmentStartPaid) : false,
           installment: { groupId, index: i + 1, total },
@@ -1118,10 +1131,12 @@ export default function FinanceApp() {
 
   async function saveSelectedCardDueDay() {
     if (!userUid || !selectedCardTab) return;
+    setCardSettingsSaveStatus("Salvando...");
 
     const due = Number(cardDueDraft || 0);
     if (!Number.isFinite(due) || due < 1 || due > 31) {
       alert("Escolha um dia de vencimento válido.");
+      setCardSettingsSaveStatus("");
       return;
     }
 
@@ -1162,7 +1177,8 @@ export default function FinanceApp() {
       })
     );
 
-    alert("Configurações do cartão salvas com sucesso.");
+    setCardSettingsSaveStatus("Configurações salvas.");
+    window.setTimeout(() => setCardSettingsSaveStatus(""), 2500);
   }
 
   const cardInvoiceTotals = useMemo(() => {
@@ -1824,6 +1840,13 @@ export default function FinanceApp() {
           font-size:11px;
           color: #3F4E63;
         }
+        .rowHeader > div:not(:has(.thBtn))::after{
+          content:"↕";
+          color:#1D4ED8;
+          font-size:10px;
+          margin-left:6px;
+          font-weight:900;
+        }
         .rowAlt{ background:#FBFCFF; }
         .row:hover{ border-color: #CBD5E1; }
 
@@ -1925,7 +1948,10 @@ export default function FinanceApp() {
         }
         .thArrow{
           font-size:10px;
-          opacity:.85;
+          opacity:1;
+          color:#1D4ED8;
+          min-width:12px;
+          text-align:center;
         }
 
         .toolbar{
@@ -2142,11 +2168,11 @@ export default function FinanceApp() {
                     </div>
 
                     <div className="field">
-                      <label className="label">Valor (R$)</label>
+                      <label className="label">Valor</label>
                       <input
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        placeholder="Ex: 150,00"
+                        value={amount || BRL.format(0)}
+                        onChange={(e) => setAmount(formatBRLTyping(e.target.value))}
+                        placeholder="R$ 0,00"
                         className="input"
                         inputMode="decimal"
                         required
@@ -2164,7 +2190,7 @@ export default function FinanceApp() {
 
                     <div className="field">
                       <label className="label">Descrição</label>
-                      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex: Mercado, OAB..." className="input" />
+                      <input value={note} onChange={(e) => setNote(capitalizeFirstWord(e.target.value))} placeholder="Ex: Mercado, OAB..." className="input" />
                     </div>
 
                     {isCardPurchase ? (
@@ -2659,9 +2685,15 @@ export default function FinanceApp() {
                         </div>
 
                         <button type="button" className="btnPrimary" onClick={saveSelectedCardDueDay}>
-                          Salvar
+                          {cardSettingsSaveStatus === "Salvando..." ? "Salvando" : "Salvar"}
                         </button>
                       </div>
+
+                      {cardSettingsSaveStatus && (
+                        <div className="hint" style={{ marginTop: 6, color: "#1D4ED8", fontWeight: 900 }}>
+                          {cardSettingsSaveStatus}
+                        </div>
+                      )}
 
                       {(selectedCardSetting?.invoiceRef || selectedCardSetting?.invoiceCheckedUntil || selectedCardSetting?.invoiceNote) && (
                         <div className="hint" style={{ marginTop: 6 }}>
