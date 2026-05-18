@@ -258,6 +258,13 @@ export default function FinanceApp() {
   // Sort
   const [sortLanc, setSortLanc] = useState({ key: "dueDate", dir: "asc" });
   const [sortCards, setSortCards] = useState({ key: "dueDate", dir: "asc" });
+  const [sortCardPeople, setSortCardPeople] = useState({ key: "value", dir: "desc" });
+  const [sortFinalInstallments, setSortFinalInstallments] = useState({ key: "dueDate", dir: "asc" });
+  const [sortFinalByPerson, setSortFinalByPerson] = useState({ key: "value", dir: "desc" });
+  const [sortCategoryDetails, setSortCategoryDetails] = useState({ key: "dueDate", dir: "asc" });
+  const [sortAnnualHistory, setSortAnnualHistory] = useState({ key: "monthIndex", dir: "asc" });
+  const [sortRecurrents, setSortRecurrents] = useState({ key: "label", dir: "asc" });
+  const [sortPeople, setSortPeople] = useState({ key: "name", dir: "asc" });
 
   const dueDatePreview = useMemo(
     () => safeDate(year, monthIndex, Number(dueDay)),
@@ -1251,6 +1258,15 @@ export default function FinanceApp() {
       .sort((a, b) => b.value - a.value);
   }, [cardItemsThisMonthBase]);
 
+  const sortedSelectedCardTotalsByPerson = useMemo(() => {
+    const { key, dir } = sortCardPeople;
+    return [...selectedCardTotalsByPerson].sort((a, b) => {
+      const av = key === "person" ? a.person : a.value;
+      const bv = key === "person" ? b.person : b.value;
+      return compareValues(av, bv, dir);
+    });
+  }, [selectedCardTotalsByPerson, sortCardPeople]);
+
   const finalInstallmentsThisMonth = useMemo(() => {
     return allCardExpensesThisMonth
       .filter((it) => {
@@ -1268,6 +1284,23 @@ export default function FinanceApp() {
         return compareValues(a.dueDate || "", b.dueDate || "", "asc");
       });
   }, [allCardExpensesThisMonth]);
+
+  const sortedFinalInstallmentsThisMonth = useMemo(() => {
+    const { key, dir } = sortFinalInstallments;
+
+    function getSortVal(row) {
+      if (key === "dueDate") return row.dueDate || "";
+      if (key === "note") return row.note || "";
+      if (key === "card") return (row.cardName || "").trim();
+      if (key === "person") return displayPersonName(row.personName);
+      if (key === "installment") return row.installment ? row.installment.index : "";
+      if (key === "status") return row.paid ? "Pago" : "Em aberto";
+      if (key === "amount") return toNumberSafe(row.amount);
+      return row[key] ?? "";
+    }
+
+    return [...finalInstallmentsThisMonth].sort((a, b) => compareValues(getSortVal(a), getSortVal(b), dir));
+  }, [finalInstallmentsThisMonth, sortFinalInstallments]);
 
   const finalInstallmentsTotal = useMemo(() => {
     const total = finalInstallmentsThisMonth.reduce((sum, it) => sum + Number(it.amount || 0), 0);
@@ -1288,6 +1321,55 @@ export default function FinanceApp() {
       .map((row) => ({ ...row, value: Number(row.value.toFixed(2)) }))
       .sort((a, b) => b.value - a.value);
   }, [finalInstallmentsThisMonth]);
+
+  const sortedFinalInstallmentsByPerson = useMemo(() => {
+    const { key, dir } = sortFinalByPerson;
+    return [...finalInstallmentsByPerson].sort((a, b) => {
+      const av = key === "person" ? a.person : key === "count" ? a.count : a.value;
+      const bv = key === "person" ? b.person : key === "count" ? b.count : b.value;
+      return compareValues(av, bv, dir);
+    });
+  }, [finalInstallmentsByPerson, sortFinalByPerson]);
+
+  const sortedSelectedCategoryItems = useMemo(() => {
+    const { key, dir } = sortCategoryDetails;
+
+    function getSortVal(row) {
+      if (key === "dueDate") return row.dueDate || "";
+      if (key === "note") return row.note || "";
+      if (key === "category") return row.category || "";
+      if (key === "amount") return toNumberSafe(row.amount);
+      return row[key] ?? "";
+    }
+
+    return [...selectedCategoryItems].sort((a, b) => compareValues(getSortVal(a), getSortVal(b), dir));
+  }, [selectedCategoryItems, sortCategoryDetails]);
+
+  const sortedAnnualHistory = useMemo(() => {
+    const { key, dir } = sortAnnualHistory;
+    return [...annualHistory].sort((a, b) => compareValues(a[key], b[key], dir));
+  }, [annualHistory, sortAnnualHistory]);
+
+  const sortedRecurrents = useMemo(() => {
+    const { key, dir } = sortRecurrents;
+
+    function getSortVal(row) {
+      if (key === "label") {
+        return `${row.type === "income" ? "Receita" : "Despesa"} ${row.category || ""} ${row.note || ""} ${row.cardName || ""} ${displayPersonName(row.personName)}`;
+      }
+      if (key === "amount") return toNumberSafe(row.amount);
+      if (key === "dueDay") return Number(row.dueDay || 0);
+      if (key === "active") return row.active ? "Ativo" : "Inativo";
+      return row[key] ?? "";
+    }
+
+    return [...recurrents].sort((a, b) => compareValues(getSortVal(a), getSortVal(b), dir));
+  }, [recurrents, sortRecurrents]);
+
+  const sortedPeople = useMemo(() => {
+    const { key, dir } = sortPeople;
+    return [...people].sort((a, b) => compareValues(a[key] || "", b[key] || "", dir));
+  }, [people, sortPeople]);
 
   /* ===================== EXPORT ===================== */
 
@@ -1496,16 +1578,23 @@ export default function FinanceApp() {
   }
 
   function SortHeader({ table, colKey, label, alignRight = false }) {
-    const state = table === "lanc" ? sortLanc : sortCards;
+    const sortConfig = {
+      lanc: [sortLanc, setSortLanc],
+      card: [sortCards, setSortCards],
+      cardPeople: [sortCardPeople, setSortCardPeople],
+      finalInstallments: [sortFinalInstallments, setSortFinalInstallments],
+      finalByPerson: [sortFinalByPerson, setSortFinalByPerson],
+      categoryDetails: [sortCategoryDetails, setSortCategoryDetails],
+      annualHistory: [sortAnnualHistory, setSortAnnualHistory],
+      recurrents: [sortRecurrents, setSortRecurrents],
+      people: [sortPeople, setSortPeople],
+    };
+    const [state, setState] = sortConfig[table] || sortConfig.card;
     const active = state.key === colKey;
     const arrow = active ? (state.dir === "asc" ? "↑" : "↓") : "↕";
 
     function onClick() {
-      if (table === "lanc") {
-        setSortLanc((s) => (s.key === colKey ? { key: colKey, dir: s.dir === "asc" ? "desc" : "asc" } : { key: colKey, dir: "asc" }));
-      } else {
-        setSortCards((s) => (s.key === colKey ? { key: colKey, dir: s.dir === "asc" ? "desc" : "asc" } : { key: colKey, dir: "asc" }));
-      }
+      setState((s) => (s.key === colKey ? { key: colKey, dir: s.dir === "asc" ? "desc" : "asc" } : { key: colKey, dir: "asc" }));
     }
 
     return (
@@ -1839,13 +1928,6 @@ export default function FinanceApp() {
           font-weight:900;
           font-size:11px;
           color: #3F4E63;
-        }
-        .rowHeader > div:not(:has(.thBtn))::after{
-          content:"↕";
-          color:#1D4ED8;
-          font-size:10px;
-          margin-left:6px;
-          font-weight:900;
         }
         .rowAlt{ background:#FBFCFF; }
         .row:hover{ border-color: #CBD5E1; }
@@ -2733,11 +2815,11 @@ export default function FinanceApp() {
                 ) : (
                   <div className="table">
                     <div className="row rowHeader" style={{ gridTemplateColumns: "1fr 200px" }}>
-                      <div>Pessoa</div>
-                      <div style={{ textAlign: "right" }}>Total</div>
+                      <SortHeader table="cardPeople" colKey="person" label="Pessoa" />
+                      <SortHeader table="cardPeople" colKey="value" label="Total" alignRight />
                     </div>
 
-                    {selectedCardTotalsByPerson.map((r, idx) => {
+                    {sortedSelectedCardTotalsByPerson.map((r, idx) => {
                       const alt = idx % 2 === 1 ? "rowAlt" : "";
                       return (
                         <div key={r.person} className={`row ${alt}`} style={{ gridTemplateColumns: "1fr 200px" }}>
@@ -2899,16 +2981,16 @@ export default function FinanceApp() {
                           : "120px 1.5fr 150px 140px 90px 130px 120px",
                       }}
                     >
-                      {isMobile ? null : <div>Venc.</div>}
-                      <div>Descrição</div>
-                      {isMobile ? null : <div>Cartão</div>}
-                      {isMobile ? null : <div>Pessoa</div>}
-                      {isMobile ? null : <div>Parc.</div>}
-                      {isMobile ? null : <div>Status</div>}
-                      <div style={{ textAlign: "right" }}>Valor</div>
+                      {isMobile ? null : <SortHeader table="finalInstallments" colKey="dueDate" label="Venc." />}
+                      <SortHeader table="finalInstallments" colKey="note" label="Descrição" />
+                      {isMobile ? null : <SortHeader table="finalInstallments" colKey="card" label="Cartão" />}
+                      {isMobile ? null : <SortHeader table="finalInstallments" colKey="person" label="Pessoa" />}
+                      {isMobile ? null : <SortHeader table="finalInstallments" colKey="installment" label="Parc." />}
+                      {isMobile ? null : <SortHeader table="finalInstallments" colKey="status" label="Status" />}
+                      <SortHeader table="finalInstallments" colKey="amount" label="Valor" alignRight />
                     </div>
 
-                    {finalInstallmentsThisMonth.map((it, idx) => {
+                    {sortedFinalInstallmentsThisMonth.map((it, idx) => {
                       const alt = idx % 2 === 1 ? "rowAlt" : "";
                       const cardTxt = (it.cardName || "").trim() || "—";
                       const pessoaTxt = displayPersonName(it.personName);
@@ -2964,12 +3046,12 @@ export default function FinanceApp() {
                           className="row rowHeader"
                           style={{ gridTemplateColumns: isMobile ? "1fr 110px" : "1fr 120px 140px" }}
                         >
-                          <div>Pessoa</div>
-                          {isMobile ? null : <div style={{ textAlign: "right" }}>Qtd.</div>}
-                          <div style={{ textAlign: "right" }}>Total</div>
+                          <SortHeader table="finalByPerson" colKey="person" label="Pessoa" />
+                          {isMobile ? null : <SortHeader table="finalByPerson" colKey="count" label="Qtd." alignRight />}
+                          <SortHeader table="finalByPerson" colKey="value" label="Total" alignRight />
                         </div>
 
-                        {finalInstallmentsByPerson.map((row, idx) => {
+                        {sortedFinalInstallmentsByPerson.map((row, idx) => {
                           const alt = idx % 2 === 1 ? "rowAlt" : "";
 
                           return (
@@ -3134,13 +3216,13 @@ export default function FinanceApp() {
                 ) : (
                   <div className="table">
                     <div className="row rowHeader" style={{ gridTemplateColumns: isMobile ? "120px 1fr 160px" : "140px 2fr 200px 200px" }}>
-                      <div>Venc.</div>
-                      <div>Descrição</div>
-                      {isMobile ? null : <div>Categoria</div>}
-                      <div>Valor</div>
+                      <SortHeader table="categoryDetails" colKey="dueDate" label="Venc." />
+                      <SortHeader table="categoryDetails" colKey="note" label="Descrição" />
+                      {isMobile ? null : <SortHeader table="categoryDetails" colKey="category" label="Categoria" />}
+                      <SortHeader table="categoryDetails" colKey="amount" label="Valor" alignRight />
                     </div>
 
-                    {selectedCategoryItems.map((it, idx) => {
+                    {sortedSelectedCategoryItems.map((it, idx) => {
                       const venc = toVencBR(it.dueDate);
                       const alt = idx % 2 === 1 ? "rowAlt" : "";
                       return (
@@ -3186,16 +3268,16 @@ export default function FinanceApp() {
                         : "1.2fr 1.2fr 1fr 1fr 1.2fr 1fr 1fr",
                     }}
                   >
-                    <div>Mês</div>
-                    <div style={{ textAlign: "right" }}>Total gasto</div>
-                    <div style={{ textAlign: "right" }}>Δ (R$)</div>
-                    <div style={{ textAlign: "right" }}>Δ%</div>
-                    {isMobile ? null : <div style={{ textAlign: "right" }}>Total dono (Meu)</div>}
-                    {isMobile ? null : <div style={{ textAlign: "right" }}>Δ (R$)</div>}
-                    {isMobile ? null : <div style={{ textAlign: "right" }}>Δ%</div>}
+                    <SortHeader table="annualHistory" colKey="monthIndex" label="Mês" />
+                    <SortHeader table="annualHistory" colKey="totalExpense" label="Total gasto" alignRight />
+                    <SortHeader table="annualHistory" colKey="deltaTotal" label="Δ (R$)" alignRight />
+                    <SortHeader table="annualHistory" colKey="pctTotal" label="Δ%" alignRight />
+                    {isMobile ? null : <SortHeader table="annualHistory" colKey="ownerExpense" label="Total dono (Meu)" alignRight />}
+                    {isMobile ? null : <SortHeader table="annualHistory" colKey="deltaOwner" label="Δ (R$)" alignRight />}
+                    {isMobile ? null : <SortHeader table="annualHistory" colKey="pctOwner" label="Δ%" alignRight />}
                   </div>
 
-                  {annualHistory.map((r, idx) => {
+                  {sortedAnnualHistory.map((r, idx) => {
                     const alt = idx % 2 === 1 ? "rowAlt" : "";
                     return (
                       <div
@@ -3348,13 +3430,13 @@ export default function FinanceApp() {
                 ) : (
                   <div className="table">
                     <div className="row rowHeader" style={{ gridTemplateColumns: isMobile ? "1fr 120px" : "1fr 120px 120px 220px" }}>
-                      <div>Recorrente</div>
-                      <div style={{ textAlign: "right" }}>Valor</div>
-                      {isMobile ? null : <div>Venc.</div>}
+                      <SortHeader table="recurrents" colKey="label" label="Recorrente" />
+                      <SortHeader table="recurrents" colKey="amount" label="Valor" alignRight />
+                      {isMobile ? null : <SortHeader table="recurrents" colKey="dueDay" label="Venc." />}
                       {isMobile ? null : <div style={{ textAlign: "right" }}>Ações</div>}
                     </div>
 
-                    {recurrents.map((r, idx) => {
+                    {sortedRecurrents.map((r, idx) => {
                       const alt = idx % 2 === 1 ? "rowAlt" : "";
                       const label = `${r.type === "income" ? "Receita" : "Despesa"} • ${r.category || "—"} • ${r.note || "(sem descrição)"}${r.isCardPurchase ? ` • ${r.cardName || "—"} • ${displayPersonName(r.personName)}` : ""}`;
                       const valorTxt = Number(r.amount || 0) === 0 ? "Rascunho" : BRL.format(Number(r.amount || 0));
@@ -3423,10 +3505,10 @@ export default function FinanceApp() {
                 ) : (
                   <div className="table">
                     <div className="row rowHeader" style={{ gridTemplateColumns: "1fr 200px" }}>
-                      <div>Nome</div>
+                      <SortHeader table="people" colKey="name" label="Nome" />
                       <div style={{ textAlign: "right" }}>Ações</div>
                     </div>
-                    {people.map((p, idx) => {
+                    {sortedPeople.map((p, idx) => {
                       const alt = idx % 2 === 1 ? "rowAlt" : "";
                       return (
                         <div key={p.id} className={`row ${alt}`} style={{ gridTemplateColumns: "1fr 200px" }}>
