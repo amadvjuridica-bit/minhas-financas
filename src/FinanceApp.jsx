@@ -98,8 +98,8 @@ function compareValues(a, b, dir = "asc") {
   if (aBlank) return 1;
   if (bBlank) return -1;
 
-  const aDate = a instanceof Date ? a : /^\d{4}-\d{2}-\d{2}/.test(String(a)) ? new Date(a) : null;
-  const bDate = b instanceof Date ? b : /^\d{4}-\d{2}-\d{2}/.test(String(b)) ? new Date(b) : null;
+  const aDate = a instanceof Date ? a : /^\d{4}-\d{2}-\d{2}/.test(String(a)) ? parseYMDLocal(a) : null;
+  const bDate = b instanceof Date ? b : /^\d{4}-\d{2}-\d{2}/.test(String(b)) ? parseYMDLocal(b) : null;
   if (aDate && bDate && !Number.isNaN(aDate.getTime()) && !Number.isNaN(bDate.getTime())) {
     const diff = aDate.getTime() - bDate.getTime();
     return dir === "asc" ? diff : -diff;
@@ -846,8 +846,8 @@ export default function FinanceApp() {
 
     const choice = window.prompt(
       "Excluir esta despesa parcelada?\n\n" +
-        "1 - Excluir somente este mes\n" +
-        "2 - Excluir este mes e todos os proximos meses\n\n" +
+        "1 - Excluir somente este mês\n" +
+        "2 - Excluir este mês e todos os próximos meses\n\n" +
         "Digite 1 ou 2."
     );
 
@@ -860,7 +860,7 @@ export default function FinanceApp() {
     }
 
     if (normalizedChoice !== "2") {
-      alert("Opcao invalida. Nada foi excluido.");
+      alert("Opção inválida. Nada foi excluído.");
       return;
     }
 
@@ -1121,7 +1121,7 @@ export default function FinanceApp() {
 
     const due = Number(cardDueDraft || 0);
     if (!Number.isFinite(due) || due < 1 || due > 31) {
-      alert("Escolha um dia de vencimento valido.");
+      alert("Escolha um dia de vencimento válido.");
       return;
     }
 
@@ -1161,6 +1161,8 @@ export default function FinanceApp() {
         });
       })
     );
+
+    alert("Configurações do cartão salvas com sucesso.");
   }
 
   const cardInvoiceTotals = useMemo(() => {
@@ -1330,7 +1332,7 @@ export default function FinanceApp() {
       const cat = isSingle ? (it.category || "—") : "Cartão";
       const valor = toNumberSafe(it.amount);
       const parcela = isSingle ? (it.installment ? `${it.installment.index}/${it.installment.total}` : "—") : "—";
-      const cartao = isSingle
+      const cartão = isSingle
         ? (it.isCardPurchase ? `${(it.cardName || "").trim() || "—"} • ${displayPersonName(it.personName)}` : "—")
         : `${it.cardName} • ${it.personDisplay} (${it.count} itens)`;
 
@@ -1347,12 +1349,12 @@ export default function FinanceApp() {
 
       return {
         Vencimento: venc,
-        Descricao: isSingle ? (it.note || "(sem descrição)") : `${it.cardName} • ${it.personDisplay} (${it.count} itens)`,
+        Descrição: isSingle ? (it.note || "(sem descrição)") : `${it.cardName} • ${it.personDisplay} (${it.count} itens)`,
         Tipo: tipo,
         Categoria: cat,
         Valor: valor,
         Parcela: parcela,
-        Cartao: cartao,
+        Cartão: cartão,
         Status: status,
       };
     });
@@ -1372,7 +1374,7 @@ export default function FinanceApp() {
       const cat = isSingle ? (it.category || "—") : "Cartão";
       const valor = BRL.format(toNumberSafe(it.amount));
       const parc = isSingle ? (it.installment ? `${it.installment.index}/${it.installment.total}` : "—") : "—";
-      const cartao = isSingle
+      const cartão = isSingle
         ? (it.isCardPurchase ? `${(it.cardName || "").trim() || "—"} • ${displayPersonName(it.personName)}` : "—")
         : `${it.cardName} • ${it.personDisplay}`;
       const status =
@@ -1386,7 +1388,7 @@ export default function FinanceApp() {
                 ? "Em aberto"
                 : "Parcial";
 
-      return [venc, desc, tipo, cat, valor, parc, cartao, status];
+      return [venc, desc, tipo, cat, valor, parc, cartão, status];
     });
 
     downloadPDF({
@@ -1409,10 +1411,10 @@ export default function FinanceApp() {
       const status = it.paid ? "Pago" : "Em aberto";
 
       return {
-        Cartao: selectedCardTab,
+        Cartão: selectedCardTab,
         Vencimento: venc,
         Compra: compra,
-        Descricao: desc,
+        Descrição: desc,
         Valor: valor,
         Parcela: parc,
         Pessoa: pessoa,
@@ -1480,7 +1482,7 @@ export default function FinanceApp() {
   function SortHeader({ table, colKey, label, alignRight = false }) {
     const state = table === "lanc" ? sortLanc : sortCards;
     const active = state.key === colKey;
-    const arrow = active ? (state.dir === "asc" ? "▲" : "▼") : "";
+    const arrow = active ? (state.dir === "asc" ? "↑" : "↓") : "↕";
 
     function onClick() {
       if (table === "lanc") {
@@ -1508,15 +1510,6 @@ export default function FinanceApp() {
   const formCardDueDay = isCardPurchase
     ? (cardDueDayByNormalizedName.get(normalizeStr(cardName)) ?? null)
     : null;
-  const cardSortOptions = [
-    { key: "dueDate", label: "Vencimento" },
-    { key: "purchaseDate", label: "Data da compra" },
-    { key: "note", label: "Descricao" },
-    { key: "amount", label: "Valor" },
-    { key: "installment", label: "Parcela" },
-    { key: "person", label: "Pessoa" },
-    { key: "status", label: "Status" },
-  ];
 
   /* ===================== UI ===================== */
 
@@ -2176,11 +2169,11 @@ export default function FinanceApp() {
 
                     {isCardPurchase ? (
                       <div className="field">
-                        <label className="label">Vencimento (cartao)</label>
+                        <label className="label">Vencimento (cartão)</label>
                         <div className="input" style={{ display: "flex", alignItems: "center", fontWeight: 900 }}>
-                          {formCardDueDay ? `Dia ${pad2(formCardDueDay)}` : "Defina na aba Cartoes"}
+                          {formCardDueDay ? `Dia ${pad2(formCardDueDay)}` : "Defina na aba Cartões"}
                         </div>
-                        <div className="hint">Compras no cartao usam o vencimento cadastrado do cartao.</div>
+                        <div className="hint">Compras no cartão usam o vencimento cadastrado do cartão.</div>
                       </div>
                     ) : (
                       <div className="field">
@@ -2616,9 +2609,9 @@ export default function FinanceApp() {
                         }}
                       >
                         <div>
-                          <div className="label">Vencimento do cartao</div>
+                          <div className="label">Vencimento do cartão</div>
                           <div className="hint">
-                            Controle compacto da proxima fatura.
+                            Controle compacto da próxima fatura.
                           </div>
                         </div>
 
@@ -2646,7 +2639,7 @@ export default function FinanceApp() {
                         </div>
 
                         <div className="field">
-                          <label className="label">Conferido ate</label>
+                          <label className="label">Conferido até</label>
                           <input
                             type="date"
                             value={invoiceCheckedUntilDraft}
@@ -2661,7 +2654,7 @@ export default function FinanceApp() {
                             value={invoiceNoteDraft}
                             onChange={(e) => setInvoiceNoteDraft(e.target.value)}
                             className="input"
-                            placeholder="Ex: planilha ate dia 16"
+                            placeholder="Ex: planilha até dia 16"
                           />
                         </div>
 
@@ -2672,8 +2665,8 @@ export default function FinanceApp() {
 
                       {(selectedCardSetting?.invoiceRef || selectedCardSetting?.invoiceCheckedUntil || selectedCardSetting?.invoiceNote) && (
                         <div className="hint" style={{ marginTop: 6 }}>
-                          {selectedCardSetting?.invoiceRef ? `Fatura ${selectedCardSetting.invoiceRef}` : "Fatura sem referencia"}
-                          {selectedCardSetting?.invoiceCheckedUntil ? ` • conferido ate ${toBRFromYMD(selectedCardSetting.invoiceCheckedUntil)}` : ""}
+                          {selectedCardSetting?.invoiceRef ? `Fatura ${selectedCardSetting.invoiceRef}` : "Fatura sem referência"}
+                          {selectedCardSetting?.invoiceCheckedUntil ? ` • conferido até ${toBRFromYMD(selectedCardSetting.invoiceCheckedUntil)}` : ""}
                           {selectedCardSetting?.invoiceNote ? ` • ${selectedCardSetting.invoiceNote}` : ""}
                         </div>
                       )}
@@ -2745,35 +2738,6 @@ export default function FinanceApp() {
                       <button type="button" className="btn" onClick={exportCartoesPDF} disabled={!selectedCardTab}>
                         Baixar PDF (A4)
                       </button>
-                    </div>
-                  </div>
-
-                  <div className="box" style={{ marginBottom: 10 }}>
-                    <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "1fr 180px" }}>
-                      <div className="field">
-                        <label className="label">Ordenar por</label>
-                        <select
-                          value={sortCards.key}
-                          onChange={(e) => setSortCards((s) => ({ ...s, key: e.target.value }))}
-                          className="select"
-                        >
-                          {cardSortOptions.map((opt) => (
-                            <option key={opt.key} value={opt.key}>{opt.label}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="field">
-                        <label className="label">Direcao</label>
-                        <select
-                          value={sortCards.dir}
-                          onChange={(e) => setSortCards((s) => ({ ...s, dir: e.target.value }))}
-                          className="select"
-                        >
-                          <option value="asc">Crescente</option>
-                          <option value="desc">Decrescente</option>
-                        </select>
-                      </div>
                     </div>
                   </div>
 
@@ -2884,7 +2848,7 @@ export default function FinanceApp() {
               <section className="card">
                 <div className="cardHead">
                   <div>
-                    <div className="cardTitle">Ultimas parcelas do mes</div>
+                    <div className="cardTitle">Últimas parcelas do mês</div>
                     <div className="cardSub">
                       Despesas parceladas que terminam em {monthLabel}/{year}, somando {BRL.format(finalInstallmentsTotal)}.
                     </div>
@@ -2892,7 +2856,7 @@ export default function FinanceApp() {
                 </div>
 
                 {finalInstallmentsThisMonth.length === 0 ? (
-                  <div className="empty">Nenhuma despesa chega na ultima parcela neste mes.</div>
+                  <div className="empty">Nenhuma despesa chega na última parcela neste mês.</div>
                 ) : (
                   <div className="table">
                     <div
@@ -2904,8 +2868,8 @@ export default function FinanceApp() {
                       }}
                     >
                       {isMobile ? null : <div>Venc.</div>}
-                      <div>Descricao</div>
-                      {isMobile ? null : <div>Cartao</div>}
+                      <div>Descrição</div>
+                      {isMobile ? null : <div>Cartão</div>}
                       {isMobile ? null : <div>Pessoa</div>}
                       {isMobile ? null : <div>Parc.</div>}
                       {isMobile ? null : <div>Status</div>}
@@ -2955,13 +2919,13 @@ export default function FinanceApp() {
                         fontWeight: 900,
                       }}
                     >
-                      <div>Total que deixa de entrar no proximo mes</div>
+                      <div>Total que deixa de entrar no próximo mês</div>
                       <div style={{ textAlign: "right" }}>{BRL.format(finalInstallmentsTotal)}</div>
                     </div>
 
                     <div style={{ marginTop: 10 }}>
                       <div className="cardSub" style={{ marginBottom: 6, fontWeight: 900 }}>
-                        Sintetico por pessoa
+                        Sintético por pessoa
                       </div>
                       <div className="table">
                         <div
