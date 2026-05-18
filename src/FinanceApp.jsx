@@ -223,10 +223,13 @@ export default function FinanceApp() {
 
   // Data compra
   const [purchaseDate, setPurchaseDate] = useState(() => ymd(new Date()));
+  const [purchaseDateTouched, setPurchaseDateTouched] = useState(false);
 
   // Aba Cartões
   const [selectedCardTab, setSelectedCardTab] = useState("");
   const [personFilter, setPersonFilter] = useState("");
+  const [cardSettings, setCardSettings] = useState([]);
+  const [cardDueDraft, setCardDueDraft] = useState(10);
 
   // Gráficos
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -318,6 +321,25 @@ export default function FinanceApp() {
     const s = new Set([...base, ...fromItems]);
     return Array.from(s).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [people, items]);
+
+  /* ===================== CARTOES (Vencimentos) ===================== */
+
+  useEffect(() => {
+    if (!userUid) return;
+    const colRef = collection(db, "users", userUid, "cardSettings");
+    const q = query(colRef, orderBy("name", "asc"));
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setCardSettings(data);
+      },
+      (err) => console.error("Card settings onSnapshot error:", err)
+    );
+
+    return () => unsub();
+  }, [userUid]);
 
   /* ===================== RECORRENTES ===================== */
 
@@ -718,8 +740,6 @@ export default function FinanceApp() {
       return;
     }
 
-    const baseDue = safeDate(year, monthIndex, Number(dueDay));
-
     const pName = (personName || "").trim();
     const cName = isCardPurchase ? (cardName || "").trim() : "";
 
@@ -728,12 +748,15 @@ export default function FinanceApp() {
       return;
     }
 
+    const effectiveDueDay = isCardPurchase
+      ? (cardDueDayByNormalizedName.get(normalizeStr(cName)) ?? Number(dueDay))
+      : Number(dueDay);
+    const baseDue = safeDate(year, monthIndex, effectiveDueDay);
+
     const needsPurchaseDate = Boolean(isCardPurchase || isInstallment);
-    const pDate = needsPurchaseDate ? String(purchaseDate || "").trim() : "";
-    if (needsPurchaseDate && !pDate) {
-      alert("Informe a data da compra.");
-      return;
-    }
+    const pDate = needsPurchaseDate
+      ? (purchaseDateTouched && String(purchaseDate || "").trim() ? String(purchaseDate || "").trim() : ymd(new Date()))
+      : "";
 
     if (!isInstallment) {
       await addDocItem({
@@ -758,7 +781,7 @@ export default function FinanceApp() {
       const perInstallment = Number((val / total).toFixed(2));
 
       for (let i = 0; i < total; i++) {
-        const d = safeDate(year, monthIndex + i, Number(dueDay));
+        const d = safeDate(year, monthIndex + i, effectiveDueDay);
         await addDocItem({
           type,
           amount: perInstallment,
@@ -787,6 +810,8 @@ export default function FinanceApp() {
     setIsCardPurchase(false);
     setCardName("");
     setPersonName("");
+    setPurchaseDate(ymd(new Date()));
+    setPurchaseDateTouched(false);
   }
 
   async function togglePaid(itemId, currentPaid) {
@@ -953,13 +978,26 @@ export default function FinanceApp() {
 
   /* ===================== ABA CARTOES ===================== */
 
+  const cardSettingsByName = useMemo(() => {
+    const map = new Map();
+    for (const setting of cardSettings) {
+      const name = (setting.name || "").trim();
+      if (!name) continue;
+      map.set(normalizeStr(name), setting);
+    }
+    return map;
+  }, [cardSettings]);
+
   const cardsFound = useMemo(() => {
     const s = new Set();
     for (const it of items) {
       if (it.isCardPurchase && (it.cardName || "").trim()) s.add(it.cardName.trim());
     }
+    for (const setting of cardSettings) {
+      if ((setting.name || "").trim()) s.add(setting.name.trim());
+    }
     return Array.from(s).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [items]);
+  }, [items, cardSettings]);
 
   const cardsSuggestions = useMemo(() => {
     const s = new Set([...(CARD_SUGGESTIONS || [])]);
@@ -1006,22 +1044,30 @@ export default function FinanceApp() {
 
   const cardDueDayByCard = useMemo(() => {
     const map = new Map();
-    for (const it of itemsThisMonthBase) {
+
+    for (const setting of cardSettings) {
+      const name = (setting.name || "").trim();
+      const day = Number(setting.dueDay || 0);
+      if (name && day >= 1 && day <= 31) map.set(name, day);
+    }
+
+    const inferred = new Map();
+    for (const it of items) {
       if (!it.isCardPurchase) continue;
       const c = (it.cardName || "").trim();
       if (!c) continue;
+      if (cardSettingsByName.has(normalizeStr(c))) continue;
 
       const d = new Date(it.dueDate);
       if (Number.isNaN(d.getTime())) continue;
 
       const day = d.getDate();
-      if (!map.has(c)) map.set(c, new Map());
-      const inner = map.get(c);
+      if (!inferred.has(c)) inferred.set(c, new Map());
+      const inner = inferred.get(c);
       inner.set(day, (inner.get(day) || 0) + 1);
     }
 
-    const result = new Map();
-    for (const [c, inner] of map.entries()) {
+    for (const [c, inner] of inferred.entries()) {
       let bestDay = null;
       let bestCount = -1;
       for (const [day, count] of inner.entries()) {
@@ -1030,15 +1076,55 @@ export default function FinanceApp() {
           bestDay = day;
         }
       }
-      if (bestDay != null) result.set(c, bestDay);
+      if (bestDay != null && !map.has(c)) map.set(c, bestDay);
     }
-    return result;
-  }, [itemsThisMonthBase]);
+    return map;
+  }, [items, cardSettings, cardSettingsByName]);
+
+  const cardDueDayByNormalizedName = useMemo(() => {
+    const map = new Map();
+    for (const [name, day] of cardDueDayByCard.entries()) {
+      map.set(normalizeStr(name), day);
+    }
+    return map;
+  }, [cardDueDayByCard]);
 
   const selectedCardDueDay = useMemo(() => {
     if (!selectedCardTab) return null;
     return cardDueDayByCard.get(selectedCardTab) ?? null;
   }, [selectedCardTab, cardDueDayByCard]);
+
+  useEffect(() => {
+    if (!selectedCardTab) return;
+    setCardDueDraft(selectedCardDueDay ?? Number(dueDay || 10));
+  }, [selectedCardTab, selectedCardDueDay, dueDay]);
+
+  async function saveSelectedCardDueDay() {
+    if (!userUid || !selectedCardTab) return;
+
+    const due = Number(cardDueDraft || 0);
+    if (!Number.isFinite(due) || due < 1 || due > 31) {
+      alert("Escolha um dia de vencimento valido.");
+      return;
+    }
+
+    const name = selectedCardTab.trim();
+    const existing = cardSettingsByName.get(normalizeStr(name));
+    const payload = {
+      name,
+      dueDay: due,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (existing?.id) {
+      await updateDoc(doc(db, "users", userUid, "cardSettings", existing.id), payload);
+    } else {
+      await addDoc(collection(db, "users", userUid, "cardSettings"), {
+        ...payload,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
 
   const cardInvoiceTotals = useMemo(() => {
     let total = 0;
@@ -1382,6 +1468,9 @@ export default function FinanceApp() {
   }
 
   const showPurchaseDateField = Boolean(isCardPurchase || isInstallment);
+  const formCardDueDay = isCardPurchase
+    ? (cardDueDayByNormalizedName.get(normalizeStr(cardName)) ?? null)
+    : null;
 
   /* ===================== UI ===================== */
 
@@ -2039,17 +2128,27 @@ export default function FinanceApp() {
                       <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ex: Mercado, OAB..." className="input" />
                     </div>
 
-                    <div className="field">
-                      <label className="label">Vencimento (dia)</label>
-                      <select value={dueDay} onChange={(e) => setDueDay(Number(e.target.value))} className="select">
-                        {daysOptions.map((d) => (
-                          <option key={d} value={d}>{d}</option>
-                        ))}
-                      </select>
-                      <div className="hint">
-                        Venc.: {pad2(dueDatePreview.getDate())}/{pad2(dueDatePreview.getMonth() + 1)}/{dueDatePreview.getFullYear()}
+                    {isCardPurchase ? (
+                      <div className="field">
+                        <label className="label">Vencimento (cartao)</label>
+                        <div className="input" style={{ display: "flex", alignItems: "center", fontWeight: 900 }}>
+                          {formCardDueDay ? `Dia ${pad2(formCardDueDay)}` : "Defina na aba Cartoes"}
+                        </div>
+                        <div className="hint">Compras no cartao usam o vencimento cadastrado do cartao.</div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="field">
+                        <label className="label">Vencimento (dia)</label>
+                        <select value={dueDay} onChange={(e) => setDueDay(Number(e.target.value))} className="select">
+                          {daysOptions.map((d) => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
+                        <div className="hint">
+                          Venc.: {pad2(dueDatePreview.getDate())}/{pad2(dueDatePreview.getMonth() + 1)}/{dueDatePreview.getFullYear()}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="box">
@@ -2126,7 +2225,16 @@ export default function FinanceApp() {
                       <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 320px) 1fr" }}>
                         <div className="field">
                           <label className="label">Data da compra</label>
-                          <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="input" required />
+                          <input
+                            type="date"
+                            value={purchaseDateTouched ? purchaseDate : ymd(new Date())}
+                            onChange={(e) => {
+                              setPurchaseDate(e.target.value);
+                              setPurchaseDateTouched(true);
+                            }}
+                            className="input"
+                            required
+                          />
                           <div className="hint">Vai aparecer como coluna “Compra” na aba Cartões.</div>
                         </div>
                         <div />
@@ -2449,6 +2557,31 @@ export default function FinanceApp() {
                         <div className="kpiValue">{BRL.format(cardInvoiceTotals.paid)}</div>
                       </div>
                     </section>
+
+                    <div className="box" style={{ marginTop: 10 }}>
+                      <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "1fr 180px 140px" }}>
+                        <div>
+                          <div className="label">Vencimento do cartao</div>
+                          <div className="hint">
+                            Este dia sera usado automaticamente nos novos lancamentos do cartao {selectedCardTab}.
+                          </div>
+                        </div>
+
+                        <select
+                          value={cardDueDraft}
+                          onChange={(e) => setCardDueDraft(Number(e.target.value))}
+                          className="select"
+                        >
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                            <option key={d} value={d}>{d}</option>
+                          ))}
+                        </select>
+
+                        <button type="button" className="btnPrimary" onClick={saveSelectedCardDueDay}>
+                          Salvar
+                        </button>
+                      </div>
+                    </div>
 
                     <div style={{ marginTop: 10 }}>
                       <div className="label">Filtrar por pessoa</div>
