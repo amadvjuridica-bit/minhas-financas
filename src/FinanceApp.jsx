@@ -1091,6 +1091,21 @@ export default function FinanceApp() {
     return Number(total.toFixed(2));
   }, [finalInstallmentsThisMonth]);
 
+  const finalInstallmentsByPerson = useMemo(() => {
+    const map = new Map();
+    for (const it of finalInstallmentsThisMonth) {
+      const person = displayPersonName(it.personName);
+      const current = map.get(person) || { person, count: 0, value: 0 };
+      current.count += 1;
+      current.value += Number(it.amount || 0);
+      map.set(person, current);
+    }
+
+    return Array.from(map.values())
+      .map((row) => ({ ...row, value: Number(row.value.toFixed(2)) }))
+      .sort((a, b) => b.value - a.value);
+  }, [finalInstallmentsThisMonth]);
+
   /* ===================== EXPORT ===================== */
 
   function downloadXLSX(rows, filenameBase) {
@@ -2642,6 +2657,38 @@ export default function FinanceApp() {
                     >
                       <div>Total que deixa de entrar no proximo mes</div>
                       <div style={{ textAlign: "right" }}>{BRL.format(finalInstallmentsTotal)}</div>
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <div className="cardSub" style={{ marginBottom: 6, fontWeight: 900 }}>
+                        Sintetico por pessoa
+                      </div>
+                      <div className="table">
+                        <div
+                          className="row rowHeader"
+                          style={{ gridTemplateColumns: isMobile ? "1fr 110px" : "1fr 120px 140px" }}
+                        >
+                          <div>Pessoa</div>
+                          {isMobile ? null : <div style={{ textAlign: "right" }}>Qtd.</div>}
+                          <div style={{ textAlign: "right" }}>Total</div>
+                        </div>
+
+                        {finalInstallmentsByPerson.map((row, idx) => {
+                          const alt = idx % 2 === 1 ? "rowAlt" : "";
+
+                          return (
+                            <div
+                              key={row.person}
+                              className={`row ${alt}`}
+                              style={{ gridTemplateColumns: isMobile ? "1fr 110px" : "1fr 120px 140px" }}
+                            >
+                              <div style={{ fontWeight: 900 }}>{row.person}</div>
+                              {isMobile ? null : <div style={{ textAlign: "right" }}>{row.count}</div>}
+                              <div style={{ textAlign: "right", fontWeight: 900 }}>{BRL.format(row.value)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
