@@ -1068,6 +1068,29 @@ export default function FinanceApp() {
       .sort((a, b) => b.value - a.value);
   }, [cardItemsThisMonthBase]);
 
+  const finalInstallmentsThisMonth = useMemo(() => {
+    return allCardExpensesThisMonth
+      .filter((it) => {
+        const installment = it.installment;
+        if (!installment) return false;
+        return Number(installment.index) === Number(installment.total);
+      })
+      .sort((a, b) => {
+        const cardDiff = compareValues((a.cardName || "").trim(), (b.cardName || "").trim(), "asc");
+        if (cardDiff !== 0) return cardDiff;
+
+        const personDiff = compareValues(displayPersonName(a.personName), displayPersonName(b.personName), "asc");
+        if (personDiff !== 0) return personDiff;
+
+        return compareValues(a.dueDate || "", b.dueDate || "", "asc");
+      });
+  }, [allCardExpensesThisMonth]);
+
+  const finalInstallmentsTotal = useMemo(() => {
+    const total = finalInstallmentsThisMonth.reduce((sum, it) => sum + Number(it.amount || 0), 0);
+    return Number(total.toFixed(2));
+  }, [finalInstallmentsThisMonth]);
+
   /* ===================== EXPORT ===================== */
 
   function downloadXLSX(rows, filenameBase) {
@@ -2542,6 +2565,87 @@ export default function FinanceApp() {
                   )}
                 </section>
               )}
+
+              <section className="card">
+                <div className="cardHead">
+                  <div>
+                    <div className="cardTitle">Ultimas parcelas do mes</div>
+                    <div className="cardSub">
+                      Despesas parceladas que terminam em {monthLabel}/{year}, somando {BRL.format(finalInstallmentsTotal)}.
+                    </div>
+                  </div>
+                </div>
+
+                {finalInstallmentsThisMonth.length === 0 ? (
+                  <div className="empty">Nenhuma despesa chega na ultima parcela neste mes.</div>
+                ) : (
+                  <div className="table">
+                    <div
+                      className="row rowHeader"
+                      style={{
+                        gridTemplateColumns: isMobile
+                          ? "1fr 120px"
+                          : "120px 1.5fr 150px 140px 90px 130px 120px",
+                      }}
+                    >
+                      {isMobile ? null : <div>Venc.</div>}
+                      <div>Descricao</div>
+                      {isMobile ? null : <div>Cartao</div>}
+                      {isMobile ? null : <div>Pessoa</div>}
+                      {isMobile ? null : <div>Parc.</div>}
+                      {isMobile ? null : <div>Status</div>}
+                      <div style={{ textAlign: "right" }}>Valor</div>
+                    </div>
+
+                    {finalInstallmentsThisMonth.map((it, idx) => {
+                      const alt = idx % 2 === 1 ? "rowAlt" : "";
+                      const cardTxt = (it.cardName || "").trim() || "—";
+                      const pessoaTxt = displayPersonName(it.personName);
+                      const parcelaTxt = `${it.installment.index}/${it.installment.total}`;
+
+                      return (
+                        <div
+                          key={it.id}
+                          className={`row ${alt}`}
+                          style={{
+                            gridTemplateColumns: isMobile
+                              ? "1fr 120px"
+                              : "120px 1.5fr 150px 140px 90px 130px 120px",
+                          }}
+                        >
+                          {isMobile ? null : <div>{toVencBR(it.dueDate)}</div>}
+                          <div className="clip" style={{ fontWeight: 900 }} title={it.note || ""}>
+                            {it.note || "(sem descricao)"}
+                          </div>
+                          {isMobile ? null : <div className="clip" title={cardTxt}>{cardTxt}</div>}
+                          {isMobile ? null : <div className="clip" title={pessoaTxt}>{pessoaTxt}</div>}
+                          {isMobile ? null : <div>{parcelaTxt}</div>}
+                          {isMobile ? null : (
+                            <div>
+                              {it.paid ? <span className="pill pill--paid">Pago</span> : <span className="pill pill--open">Em aberto</span>}
+                            </div>
+                          )}
+                          <div style={{ textAlign: "right", fontWeight: 900 }}>
+                            {BRL.format(Number(it.amount || 0))}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div
+                      className="row"
+                      style={{
+                        gridTemplateColumns: isMobile ? "1fr 120px" : "1fr 120px",
+                        borderTop: "1px solid rgba(148, 163, 184, 0.45)",
+                        fontWeight: 900,
+                      }}
+                    >
+                      <div>Total que deixa de entrar no proximo mes</div>
+                      <div style={{ textAlign: "right" }}>{BRL.format(finalInstallmentsTotal)}</div>
+                    </div>
+                  </div>
+                )}
+              </section>
             </>
           )}
 
