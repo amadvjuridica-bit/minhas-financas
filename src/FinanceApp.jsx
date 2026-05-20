@@ -3390,7 +3390,7 @@ export default function FinanceApp() {
                     </div>
                   </section>
 
-                  <section style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr", gap: 10, margin: "10px 0" }}>
+                  <section style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr 1fr", gap: 10, margin: "10px 0" }}>
                     <div className="box">
                       <div style={{ fontWeight: 900 }}>Leitura rápida</div>
                       <div className="hint">
@@ -3408,23 +3408,27 @@ export default function FinanceApp() {
                       <div className="hint">Meu: <b>{BRL.format(annualSummary.ownerExpense)}</b></div>
                       <div className="hint">Outros/pessoas no cartão: <b>{BRL.format(annualSummary.thirdPartyExpense)}</b></div>
                     </div>
+                    <div className="box">
+                      <div style={{ fontWeight: 900 }}>Critério</div>
+                      <div className="hint">Meu = despesas sem pessoa vinculada no cartão + despesas fora do cartão.</div>
+                      <div className="hint">Outros = despesas do cartão atribuídas a alguma pessoa.</div>
+                    </div>
                   </section>
 
                   <div className="table">
-                    <div className="row rowHeader" style={{ gridTemplateColumns: isMobile ? "1.1fr 1fr 1fr" : "1fr 1.2fr 1fr 1fr 1fr 1fr 1.2fr" }}>
+                    <div className="row rowHeader" style={{ gridTemplateColumns: isMobile ? "1.1fr 1fr 1fr" : "1fr 1.2fr 1fr 1fr 1fr 1.6fr" }}>
                       <SortHeader table="annualHistory" colKey="monthIndex" label="Mês" />
                       <SortHeader table="annualHistory" colKey="totalExpense" label="Total" alignRight />
                       <SortHeader table="annualHistory" colKey="ownerExpense" label="Meu" alignRight />
                       {isMobile ? null : <SortHeader table="annualHistory" colKey="thirdPartyExpense" label="Outros" alignRight />}
                       {isMobile ? null : <SortHeader table="annualHistory" colKey="deltaTotal" label="Δ mês" alignRight />}
-                      {isMobile ? null : <SortHeader table="annualHistory" colKey="monthShare" label="Peso no ano" alignRight />}
-                      <div>Visual</div>
+                      <div>Distribuição</div>
                     </div>
 
                     {sortedAnnualHistory.map((r, idx) => {
                       const alt = idx % 2 === 1 ? "rowAlt" : "";
                       return (
-                        <div key={`${year}-${r.monthIndex}`} className={`row ${alt}`} style={{ gridTemplateColumns: isMobile ? "1.1fr 1fr 1fr" : "1fr 1.2fr 1fr 1fr 1fr 1fr 1.2fr" }}>
+                        <div key={`${year}-${r.monthIndex}`} className={`row ${alt}`} style={{ gridTemplateColumns: isMobile ? "1.1fr 1fr 1fr" : "1fr 1.2fr 1fr 1fr 1fr 1.6fr" }}>
                           <div style={{ fontWeight: 900 }}>{r.monthName}</div>
                           <div style={{ textAlign: "right", fontWeight: 900 }}>{BRL.format(r.totalExpense)}</div>
                           <div style={{ textAlign: "right" }}>{BRL.format(r.ownerExpense)}</div>
@@ -3434,9 +3438,16 @@ export default function FinanceApp() {
                               {r.monthIndex === 0 ? "—" : `${BRL.format(r.deltaTotal)} (${pctFmt(r.pctTotal)})`}
                             </div>
                           )}
-                          {isMobile ? null : <div style={{ textAlign: "right" }}>{r.monthShare == null ? "—" : pctFmt(r.monthShare)}</div>}
                           <div>
-                            <div style={{ height: 8, borderRadius: 999, background: "#E7EBF3", overflow: "hidden" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 10, fontWeight: 900, color: "#64748B", marginBottom: 4 }}>
+                              <span>Meu {r.ownerShare == null ? "—" : pctFmt(r.ownerShare)}</span>
+                              <span>Ano {r.monthShare == null ? "—" : pctFmt(r.monthShare)}</span>
+                            </div>
+                            <div style={{ height: 8, borderRadius: 999, background: "#E7EBF3", overflow: "hidden", display: "flex" }}>
+                              <div style={{ width: `${Math.round((r.ownerShare || 0) * 100)}%`, height: "100%", background: "#1D4ED8" }} />
+                              <div style={{ flex: 1, height: "100%", background: "#94A3B8" }} />
+                            </div>
+                            <div style={{ height: 4, borderRadius: 999, background: "#E7EBF3", overflow: "hidden", marginTop: 4 }}>
                               <div style={{ width: `${Math.max(2, Math.round((r.barPct || 0) * 100))}%`, height: "100%", background: r.monthIndex === monthIndex ? "#1D4ED8" : "#94A3B8" }} />
                             </div>
                           </div>
