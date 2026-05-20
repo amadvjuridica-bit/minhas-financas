@@ -875,43 +875,55 @@ export default function FinanceApp() {
   async function removeCardItem(it) {
     if (!userUid || !it?.id) return;
 
-    const installment = it.installment;
-    if (!installment?.groupId) {
-      await removeItem(it.id);
-      return;
+    try {
+      const installment = it.installment;
+      if (!installment?.groupId) {
+        const ok = window.confirm("Excluir esta despesa do cartão?");
+        if (!ok) return;
+
+        await removeItem(it.id);
+        alert("Despesa excluída com sucesso.");
+        return;
+      }
+
+      const choice = window.prompt(
+        "Excluir esta despesa parcelada?\n\n" +
+          "1 - Excluir somente este mês\n" +
+          "2 - Excluir este mês e todos os próximos meses\n\n" +
+          "Digite 1 ou 2."
+      );
+
+      if (choice === null) return;
+
+      const normalizedChoice = String(choice).trim();
+      if (normalizedChoice === "1") {
+        await removeItem(it.id);
+        alert("Parcela excluída com sucesso.");
+        return;
+      }
+
+      if (normalizedChoice !== "2") {
+        alert("Opção inválida. Nada foi excluído.");
+        return;
+      }
+
+      const groupId = installment.groupId;
+      const currentIndex = Number(installment.index || 0);
+      const targets = items.filter((row) => {
+        const rowInstallment = row.installment;
+        if (!rowInstallment || rowInstallment.groupId !== groupId) return false;
+        return Number(rowInstallment.index || 0) >= currentIndex;
+      });
+
+      const rowsToDelete = targets.length > 0 ? targets : [it];
+      await Promise.all(
+        rowsToDelete.map((row) => deleteDoc(doc(db, "users", userUid, "transactions", row.id)))
+      );
+      alert(`${rowsToDelete.length} ${rowsToDelete.length === 1 ? "parcela excluída" : "parcelas excluídas"} com sucesso.`);
+    } catch (e) {
+      console.error("Erro ao excluir despesa do cartão:", e);
+      alert("Não foi possível excluir agora. Tente novamente.");
     }
-
-    const choice = window.prompt(
-      "Excluir esta despesa parcelada?\n\n" +
-        "1 - Excluir somente este mês\n" +
-        "2 - Excluir este mês e todos os próximos meses\n\n" +
-        "Digite 1 ou 2."
-    );
-
-    if (choice === null) return;
-
-    const normalizedChoice = String(choice).trim();
-    if (normalizedChoice === "1") {
-      await removeItem(it.id);
-      return;
-    }
-
-    if (normalizedChoice !== "2") {
-      alert("Opção inválida. Nada foi excluído.");
-      return;
-    }
-
-    const groupId = installment.groupId;
-    const currentIndex = Number(installment.index || 0);
-    const targets = items.filter((row) => {
-      const rowInstallment = row.installment;
-      if (!rowInstallment || rowInstallment.groupId !== groupId) return false;
-      return Number(rowInstallment.index || 0) >= currentIndex;
-    });
-
-    await Promise.all(
-      targets.map((row) => deleteDoc(doc(db, "users", userUid, "transactions", row.id)))
-    );
   }
 
   // ✅ Edição “rápida” inline do VALOR (clica no valor -> vira campo)
