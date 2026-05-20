@@ -624,6 +624,53 @@ export default function FinanceApp() {
     return rows;
   }, [items, year, monthNames]);
 
+  const annualSummary = useMemo(() => {
+    const rows = annualHistory.map((row) => {
+      const thirdPartyExpense = Number(Math.max(0, row.totalExpense - row.ownerExpense).toFixed(2));
+      return { ...row, thirdPartyExpense };
+    });
+
+    const totalExpense = Number(rows.reduce((sum, row) => sum + row.totalExpense, 0).toFixed(2));
+    const ownerExpense = Number(rows.reduce((sum, row) => sum + row.ownerExpense, 0).toFixed(2));
+    const thirdPartyExpense = Number(Math.max(0, totalExpense - ownerExpense).toFixed(2));
+    const monthsWithExpense = rows.filter((row) => row.totalExpense > 0);
+    const averageExpense = monthsWithExpense.length
+      ? Number((totalExpense / monthsWithExpense.length).toFixed(2))
+      : 0;
+    const maxExpense = Math.max(0, ...rows.map((row) => row.totalExpense));
+    const highestMonth = rows.reduce((best, row) => (row.totalExpense > (best?.totalExpense ?? -1) ? row : best), null);
+    const lowestMonth = monthsWithExpense.reduce((best, row) => (row.totalExpense < (best?.totalExpense ?? Infinity) ? row : best), null);
+    const selectedMonth = rows[monthIndex] || null;
+    const futureExpense = Number(
+      rows
+        .filter((row) => row.monthIndex > monthIndex)
+        .reduce((sum, row) => sum + row.totalExpense, 0)
+        .toFixed(2)
+    );
+    const ownerShare = totalExpense > 0 ? ownerExpense / totalExpense : null;
+
+    const rowsWithShare = rows.map((row) => ({
+      ...row,
+      monthShare: totalExpense > 0 ? row.totalExpense / totalExpense : null,
+      ownerShare: row.totalExpense > 0 ? row.ownerExpense / row.totalExpense : null,
+      barPct: maxExpense > 0 ? row.totalExpense / maxExpense : 0,
+    }));
+
+    return {
+      rows: rowsWithShare,
+      totalExpense,
+      ownerExpense,
+      thirdPartyExpense,
+      averageExpense,
+      monthsWithExpense: monthsWithExpense.length,
+      highestMonth,
+      lowestMonth,
+      selectedMonth,
+      futureExpense,
+      ownerShare,
+    };
+  }, [annualHistory, monthIndex]);
+
   /* ===================== LANCAMENTOS: AGRUPAR CARTÃO + SOMAR ===================== */
 
   const groupedForLancamentos = useMemo(() => {
@@ -1376,8 +1423,8 @@ export default function FinanceApp() {
 
   const sortedAnnualHistory = useMemo(() => {
     const { key, dir } = sortAnnualHistory;
-    return [...annualHistory].sort((a, b) => compareValues(a[key], b[key], dir));
-  }, [annualHistory, sortAnnualHistory]);
+    return [...annualSummary.rows].sort((a, b) => compareValues(a[key], b[key], dir));
+  }, [annualSummary.rows, sortAnnualHistory]);
 
   const sortedRecurrents = useMemo(() => {
     const { key, dir } = sortRecurrents;
@@ -3297,6 +3344,112 @@ export default function FinanceApp() {
 
           {/* ===================== ABA RESUMO ===================== */}
           {activeTab === TAB.RESUMO && (
+            <section className="card">
+              <div className="cardHead">
+                <div>
+                  <div className="cardTitle">Resumo — Histórico anual</div>
+                  <div className="cardSub">
+                    Ano: <b>{year}</b> • Inclui lançamentos e parcelas futuras já cadastradas. Δ compara cada mês com o mês anterior.
+                  </div>
+                </div>
+              </div>
+
+              {annualSummary.totalExpense === 0 && annualSummary.ownerExpense === 0 ? (
+                <div className="empty">Sem despesas registradas para este ano ainda.</div>
+              ) : (
+                <>
+                  <section className="kpis" style={{ gridTemplateColumns: isMobile ? "1fr" : "repeat(6, minmax(0, 1fr))" }}>
+                    <div className="kpi">
+                      <div className="kpiLabel">Total anual cadastrado</div>
+                      <div className="kpiValue">{BRL.format(annualSummary.totalExpense)}</div>
+                    </div>
+                    <div className="kpi">
+                      <div className="kpiLabel">Média mensal</div>
+                      <div className="kpiValue">{BRL.format(annualSummary.averageExpense)}</div>
+                      <div className="hint">{annualSummary.monthsWithExpense} meses com despesas</div>
+                    </div>
+                    <div className="kpi">
+                      <div className="kpiLabel">Mês selecionado</div>
+                      <div className="kpiValue">{BRL.format(annualSummary.selectedMonth?.totalExpense || 0)}</div>
+                      <div className="hint">{monthLabel}/{year}</div>
+                    </div>
+                    <div className="kpi">
+                      <div className="kpiLabel">Maior mês</div>
+                      <div className="kpiValue">{annualSummary.highestMonth ? BRL.format(annualSummary.highestMonth.totalExpense) : "—"}</div>
+                      <div className="hint">{annualSummary.highestMonth?.monthName || "—"}</div>
+                    </div>
+                    <div className="kpi">
+                      <div className="kpiLabel">Meu no ano</div>
+                      <div className="kpiValue">{BRL.format(annualSummary.ownerExpense)}</div>
+                      <div className="hint">{annualSummary.ownerShare == null ? "—" : pctFmt(annualSummary.ownerShare)} do total</div>
+                    </div>
+                    <div className="kpi">
+                      <div className="kpiLabel">Próximos meses</div>
+                      <div className="kpiValue">{BRL.format(annualSummary.futureExpense)}</div>
+                      <div className="hint">Após {monthLabel}</div>
+                    </div>
+                  </section>
+
+                  <section style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1.2fr 1fr", gap: 10, margin: "10px 0" }}>
+                    <div className="box">
+                      <div style={{ fontWeight: 900 }}>Leitura rápida</div>
+                      <div className="hint">
+                        {annualSummary.selectedMonth?.totalExpense > annualSummary.averageExpense
+                          ? `O mês selecionado está acima da média em ${BRL.format(annualSummary.selectedMonth.totalExpense - annualSummary.averageExpense)}.`
+                          : `O mês selecionado está abaixo da média em ${BRL.format(Math.max(0, annualSummary.averageExpense - (annualSummary.selectedMonth?.totalExpense || 0)))}.`}
+                      </div>
+                      <div className="hint">
+                        Menor mês com despesa: <b>{annualSummary.lowestMonth?.monthName || "—"}</b>
+                        {annualSummary.lowestMonth ? ` (${BRL.format(annualSummary.lowestMonth.totalExpense)})` : ""}.
+                      </div>
+                    </div>
+                    <div className="box">
+                      <div style={{ fontWeight: 900 }}>Composição anual</div>
+                      <div className="hint">Meu: <b>{BRL.format(annualSummary.ownerExpense)}</b></div>
+                      <div className="hint">Outros/pessoas no cartão: <b>{BRL.format(annualSummary.thirdPartyExpense)}</b></div>
+                    </div>
+                  </section>
+
+                  <div className="table">
+                    <div className="row rowHeader" style={{ gridTemplateColumns: isMobile ? "1.1fr 1fr 1fr" : "1fr 1.2fr 1fr 1fr 1fr 1fr 1.2fr" }}>
+                      <SortHeader table="annualHistory" colKey="monthIndex" label="Mês" />
+                      <SortHeader table="annualHistory" colKey="totalExpense" label="Total" alignRight />
+                      <SortHeader table="annualHistory" colKey="ownerExpense" label="Meu" alignRight />
+                      {isMobile ? null : <SortHeader table="annualHistory" colKey="thirdPartyExpense" label="Outros" alignRight />}
+                      {isMobile ? null : <SortHeader table="annualHistory" colKey="deltaTotal" label="Δ mês" alignRight />}
+                      {isMobile ? null : <SortHeader table="annualHistory" colKey="monthShare" label="Peso no ano" alignRight />}
+                      <div>Visual</div>
+                    </div>
+
+                    {sortedAnnualHistory.map((r, idx) => {
+                      const alt = idx % 2 === 1 ? "rowAlt" : "";
+                      return (
+                        <div key={`${year}-${r.monthIndex}`} className={`row ${alt}`} style={{ gridTemplateColumns: isMobile ? "1.1fr 1fr 1fr" : "1fr 1.2fr 1fr 1fr 1fr 1fr 1.2fr" }}>
+                          <div style={{ fontWeight: 900 }}>{r.monthName}</div>
+                          <div style={{ textAlign: "right", fontWeight: 900 }}>{BRL.format(r.totalExpense)}</div>
+                          <div style={{ textAlign: "right" }}>{BRL.format(r.ownerExpense)}</div>
+                          {isMobile ? null : <div style={{ textAlign: "right" }}>{BRL.format(r.thirdPartyExpense)}</div>}
+                          {isMobile ? null : (
+                            <div style={{ textAlign: "right", ...deltaTone(r.deltaTotal) }}>
+                              {r.monthIndex === 0 ? "—" : `${BRL.format(r.deltaTotal)} (${pctFmt(r.pctTotal)})`}
+                            </div>
+                          )}
+                          {isMobile ? null : <div style={{ textAlign: "right" }}>{r.monthShare == null ? "—" : pctFmt(r.monthShare)}</div>}
+                          <div>
+                            <div style={{ height: 8, borderRadius: 999, background: "#E7EBF3", overflow: "hidden" }}>
+                              <div style={{ width: `${Math.max(2, Math.round((r.barPct || 0) * 100))}%`, height: "100%", background: r.monthIndex === monthIndex ? "#1D4ED8" : "#94A3B8" }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+
+          {false && activeTab === TAB.RESUMO && (
             <section className="card">
               <div className="cardHead">
                 <div>
