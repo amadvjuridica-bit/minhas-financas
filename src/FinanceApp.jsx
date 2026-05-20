@@ -138,7 +138,7 @@ function deltaTone(delta) {
 function parseBRLInput(raw) {
   const s0 = String(raw ?? "").trim();
   if (!s0) return { ok: false, value: 0 };
-  const s = s0.replace(/\s/g, "");
+  const s = s0.replace(/\s/g, "").replace(/[^\d,.-]/g, "");
   // se tem vírgula, considera vírgula como decimal e remove pontos de milhar
   if (s.includes(",")) {
     const cleaned = s.replace(/\./g, "").replace(",", ".");
