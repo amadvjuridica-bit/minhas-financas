@@ -227,6 +227,7 @@ export default function FinanceApp() {
   const [category, setCategory] = useState("Cartão");
   const [note, setNote] = useState("");
   const [dueDay, setDueDay] = useState(10);
+  const [lastAddedSummary, setLastAddedSummary] = useState(null);
 
   // Cartão / pessoa
   const [isCardPurchase, setIsCardPurchase] = useState(false);
@@ -786,13 +787,15 @@ export default function FinanceApp() {
     const pDate = needsPurchaseDate
       ? (purchaseDateTouched && String(purchaseDate || "").trim() ? String(purchaseDate || "").trim() : ymd(new Date()))
       : "";
+    const cleanNote = capitalizeFirstWord(note)?.trim() || "(sem descrição)";
+    let installmentSummary = null;
 
     if (!isInstallment) {
       await addDocItem({
         type,
         amount: Number(val.toFixed(2)),
         category,
-        note: capitalizeFirstWord(note)?.trim() || "",
+        note: cleanNote === "(sem descrição)" ? "" : cleanNote,
         dueDate: ymd(baseDue),
         paid: false,
         installment: null,
@@ -808,6 +811,7 @@ export default function FinanceApp() {
       const total = Math.max(2, Math.min(48, Number(installments || 2)));
       const groupId = uid();
       const perInstallment = Number((val / total).toFixed(2));
+      installmentSummary = { total, amount: perInstallment };
 
       for (let i = 0; i < total; i++) {
         const d = safeDate(year, monthIndex + i, effectiveDueDay);
@@ -815,7 +819,7 @@ export default function FinanceApp() {
           type,
           amount: perInstallment,
           category,
-          note: capitalizeFirstWord(note)?.trim() || "",
+          note: cleanNote === "(sem descrição)" ? "" : cleanNote,
           dueDate: ymd(d),
           paid: i === 0 ? Boolean(installmentStartPaid) : false,
           installment: { groupId, index: i + 1, total },
@@ -829,6 +833,19 @@ export default function FinanceApp() {
         });
       }
     }
+
+    setLastAddedSummary({
+      type,
+      amount: Number(val.toFixed(2)),
+      category,
+      note: cleanNote,
+      dueDate: ymd(baseDue),
+      isCardPurchase: Boolean(isCardPurchase),
+      cardName: cName,
+      personName: pName,
+      purchaseDate: needsPurchaseDate ? pDate : null,
+      installment: installmentSummary,
+    });
 
     setAmount("");
     setNote("");
@@ -2392,6 +2409,30 @@ export default function FinanceApp() {
                   <div style={{ display: "flex", justifyContent: "flex-end" }}>
                     <button type="submit" className="btnPrimary">Adicionar</button>
                   </div>
+
+                  {lastAddedSummary && (
+                    <div className="box" style={{ borderColor: "#BFDBFE", background: "#EFF6FF" }}>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <div style={{ fontWeight: 900, color: "#1D4ED8" }}>Lançamento adicionado</div>
+                        <div className="hint" style={{ color: "#0F172A" }}>
+                          {lastAddedSummary.type === "income" ? "Receita" : "Despesa"} • {lastAddedSummary.category} • {lastAddedSummary.note}
+                        </div>
+                        <div className="hint" style={{ color: "#0F172A" }}>
+                          Total salvo: <b>{BRL.format(lastAddedSummary.amount)}</b>
+                          {lastAddedSummary.installment
+                            ? ` • ${lastAddedSummary.installment.total} parcelas de ${BRL.format(lastAddedSummary.installment.amount)}`
+                            : ""}
+                          {lastAddedSummary.isCardPurchase
+                            ? ` • ${lastAddedSummary.cardName || "Cartão"} • ${displayPersonName(lastAddedSummary.personName)}`
+                            : ""}
+                        </div>
+                        <div className="hint">
+                          Vencimento: {toVencBR(lastAddedSummary.dueDate)}
+                          {lastAddedSummary.purchaseDate ? ` • Compra: ${toBRFromYMD(lastAddedSummary.purchaseDate)}` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </form>
               </section>
 
