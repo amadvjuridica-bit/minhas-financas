@@ -22,6 +22,7 @@ import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recha
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import companyLogo from "./assets/logo.png";
 
 /* ===================== HELPERS ===================== */
 
@@ -1945,9 +1946,11 @@ export default function FinanceApp() {
         }
         .brandLeft{ display:flex; align-items:center; gap:8px; min-width:0; }
         .brandMark{
-          width:8px; height:8px; border-radius:2px;
-          background: var(--primary);
-          box-shadow: 0 0 0 3px rgba(29,78,216,.16);
+          width:26px; height:26px; border-radius:6px;
+          background:#fff;
+          border:1px solid rgba(255,255,255,.18);
+          object-fit:contain;
+          padding:2px;
           flex:0 0 auto;
         }
         .brandTitle{
@@ -2414,7 +2417,7 @@ export default function FinanceApp() {
         >
           <div className="brandRow">
             <div className="brandLeft">
-              <div className="brandMark" />
+              <img src={companyLogo} alt="A&M Assis e Mollerke" className="brandMark" />
               <div style={{ display: "grid", gap: 1, minWidth: 0 }}>
                 <div className="brandTitle">Minhas Finanças</div>
                 <div className="brandSub">
@@ -2982,7 +2985,6 @@ export default function FinanceApp() {
                         placeholder="Digite a senha"
                         autoComplete="current-password"
                       />
-                      <div className="hint">Senha padrão neste momento: 7485.</div>
                     </div>
                     <div style={{ display: "flex", justifyContent: "flex-end" }}>
                       <button type="submit" className="btnPrimary">Acessar cofre</button>
