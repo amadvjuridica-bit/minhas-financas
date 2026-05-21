@@ -88,6 +88,21 @@ function toNumberSafe(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
+function addDays(dateObj, days) {
+  const d = new Date(dateObj);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+function addMonthsSafe(dateObj, months) {
+  const base = new Date(dateObj);
+  const day = base.getDate();
+  const target = new Date(base.getFullYear(), base.getMonth() + months, 1);
+  target.setDate(Math.min(day, daysInMonth(target.getFullYear(), target.getMonth())));
+  return target;
+}
+function endOfMonthDate(year, monthIndex0) {
+  return new Date(year, monthIndex0 + 1, 0);
+}
 function normalizeStr(s) {
   return String(s ?? "").trim().toLowerCase();
 }
@@ -174,6 +189,7 @@ function colorForIndex(i) {
 const TAB = {
   LANCAMENTOS: "lancamentos",
   CARTOES: "cartoes",
+  COFRE: "cofre",
   GRAFICOS: "graficos",
   RESUMO: "resumo",
   RECORRENTES: "recorrentes",
@@ -252,6 +268,18 @@ export default function FinanceApp() {
   const [invoiceCheckedUntilDraft, setInvoiceCheckedUntilDraft] = useState("");
   const [invoiceNoteDraft, setInvoiceNoteDraft] = useState("");
   const [cardSettingsSaveStatus, setCardSettingsSaveStatus] = useState("");
+
+  // Cofre pessoal
+  const [vaultEntries, setVaultEntries] = useState([]);
+  const [vaultUnlocked, setVaultUnlocked] = useState(false);
+  const [vaultPassword, setVaultPassword] = useState("");
+  const [vaultBank, setVaultBank] = useState("");
+  const [vaultPlace, setVaultPlace] = useState("");
+  const [vaultAmount, setVaultAmount] = useState("");
+  const [vaultDate, setVaultDate] = useState(() => ymd(new Date()));
+  const [vaultNote, setVaultNote] = useState("");
+  const [vaultViewMode, setVaultViewMode] = useState("day");
+  const [vaultReferenceDate, setVaultReferenceDate] = useState(() => ymd(new Date()));
 
   // Gráficos
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -369,6 +397,171 @@ export default function FinanceApp() {
 
     return () => unsub();
   }, [userUid]);
+
+  /* ===================== COFRE PESSOAL ===================== */
+
+  useEffect(() => {
+    if (!userUid) return;
+    const colRef = collection(db, "users", userUid, "vaultEntries");
+    const q = query(colRef, orderBy("balanceDate", "desc"));
+
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setVaultEntries(data);
+      },
+      (err) => console.error("Vault entries onSnapshot error:", err)
+    );
+
+    return () => unsub();
+  }, [userUid]);
+
+  function vaultAccountKey(entry) {
+    return `${normalizeStr(entry.bank)}__${normalizeStr(entry.place)}`;
+  }
+
+  function vaultPositionAt(dateStr) {
+    const cutoff = String(dateStr || "");
+    const map = new Map();
+
+    const sorted = [...vaultEntries].sort((a, b) => {
+      const dateDiff = String(b.balanceDate || "").localeCompare(String(a.balanceDate || ""));
+      if (dateDiff !== 0) return dateDiff;
+      return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    });
+
+    for (const entry of sorted) {
+      if (!entry.balanceDate || entry.balanceDate > cutoff) continue;
+      const bank = (entry.bank || "").trim();
+      const place = (entry.place || "").trim();
+      if (!bank || !place) continue;
+
+      const key = vaultAccountKey(entry);
+      if (!map.has(key)) map.set(key, entry);
+    }
+
+    const accounts = Array.from(map.values()).sort((a, b) => {
+      const av = `${a.bank || ""} ${a.place || ""}`;
+      const bv = `${b.bank || ""} ${b.place || ""}`;
+      return av.localeCompare(bv, "pt-BR");
+    });
+    const total = Number(accounts.reduce((sum, entry) => sum + Number(entry.amount || 0), 0).toFixed(2));
+    return { accounts, total };
+  }
+
+  const vaultStats = useMemo(() => {
+    const refDate = parseYMDLocal(vaultReferenceDate);
+    const refYmd = Number.isNaN(refDate.getTime()) ? ymd(new Date()) : ymd(refDate);
+    const previousDate =
+      vaultViewMode === "week"
+        ? addDays(parseYMDLocal(refYmd), -7)
+        : vaultViewMode === "month"
+          ? addMonthsSafe(parseYMDLocal(refYmd), -1)
+          : addDays(parseYMDLocal(refYmd), -1);
+    const previousYmd = ymd(previousDate);
+
+    const current = vaultPositionAt(refYmd);
+    const previous = vaultPositionAt(previousYmd);
+    const delta = Number((current.total - previous.total).toFixed(2));
+    const pct = previous.total > 0 ? delta / previous.total : null;
+
+    const byBankMap = new Map();
+    for (const entry of current.accounts) {
+      const bank = (entry.bank || "").trim() || "Sem banco";
+      const row = byBankMap.get(bank) || { bank, amount: 0, count: 0 };
+      row.amount += Number(entry.amount || 0);
+      row.count += 1;
+      byBankMap.set(bank, row);
+    }
+    const byBank = Array.from(byBankMap.values())
+      .map((row) => ({ ...row, amount: Number(row.amount.toFixed(2)) }))
+      .sort((a, b) => b.amount - a.amount);
+
+    const monthly = monthNames.map((monthName, idx) => {
+      const pos = vaultPositionAt(ymd(endOfMonthDate(year, idx)));
+      const prev = idx === 0
+        ? vaultPositionAt(ymd(endOfMonthDate(year - 1, 11)))
+        : vaultPositionAt(ymd(endOfMonthDate(year, idx - 1)));
+      return {
+        monthName,
+        monthIndex: idx,
+        total: pos.total,
+        delta: Number((pos.total - prev.total).toFixed(2)),
+      };
+    });
+
+    return {
+      refYmd,
+      previousYmd,
+      current,
+      previous,
+      delta,
+      pct,
+      byBank,
+      monthly,
+      accountCount: current.accounts.length,
+    };
+  }, [vaultEntries, vaultReferenceDate, vaultViewMode, year, monthNames]);
+
+  async function unlockVault(e) {
+    e?.preventDefault?.();
+    if (String(vaultPassword || "").trim() !== "7485") {
+      alert("Senha inválida.");
+      return;
+    }
+    setVaultUnlocked(true);
+    setVaultPassword("");
+  }
+
+  async function addVaultEntry(e) {
+    e?.preventDefault?.();
+    if (!userUid) return;
+
+    const bank = (vaultBank || "").trim();
+    const place = (vaultPlace || "").trim();
+    const parsed = parseBRLInput(vaultAmount);
+
+    if (!bank) {
+      alert("Informe o banco ou instituição.");
+      return;
+    }
+    if (!place) {
+      alert("Informe onde está o valor, por exemplo Conta corrente ou Cofrinho.");
+      return;
+    }
+    if (!vaultDate) {
+      alert("Informe a data do saldo.");
+      return;
+    }
+    if (!parsed.ok || parsed.value < 0) {
+      alert("Informe um valor válido.");
+      return;
+    }
+
+    await addDoc(collection(db, "users", userUid, "vaultEntries"), {
+      bank,
+      place,
+      amount: Number(parsed.value.toFixed(2)),
+      balanceDate: vaultDate,
+      note: (vaultNote || "").trim(),
+      userEmail,
+      createdAt: new Date().toISOString(),
+    });
+
+    setVaultBank("");
+    setVaultPlace("");
+    setVaultAmount("");
+    setVaultNote("");
+    setVaultReferenceDate(vaultDate);
+  }
+
+  async function removeVaultEntry(id) {
+    if (!userUid || !id) return;
+    const ok = window.confirm("Excluir este saldo informado do cofre?");
+    if (!ok) return;
+    await deleteDoc(doc(db, "users", userUid, "vaultEntries", id));
+  }
 
   /* ===================== RECORRENTES ===================== */
 
@@ -2159,6 +2352,51 @@ export default function FinanceApp() {
           font-weight:800;
           white-space:nowrap;
         }
+        .segmented{
+          display:inline-flex;
+          gap:4px;
+          padding:4px;
+          border:1px solid var(--line);
+          border-radius:10px;
+          background:#F8FAFC;
+        }
+        .segBtn, .segBtnActive{
+          height:28px;
+          border:0;
+          border-radius:7px;
+          padding:0 10px;
+          font-size:11px;
+          font-weight:900;
+          cursor:pointer;
+          background:transparent;
+          color:var(--muted);
+        }
+        .segBtnActive{
+          background:#fff;
+          color:var(--primary);
+          box-shadow:0 1px 4px rgba(15,23,42,.10);
+        }
+        .miniStatGrid{
+          display:grid;
+          gap:10px;
+          margin-bottom:10px;
+        }
+        .trendBar{
+          height:8px;
+          border-radius:999px;
+          background:#E2E8F0;
+          overflow:hidden;
+        }
+        .trendBar > span{
+          display:block;
+          height:100%;
+          border-radius:999px;
+          background:linear-gradient(90deg,#1D4ED8,#16A34A);
+        }
+        .vaultLocked{
+          max-width:460px;
+          margin:34px auto 0;
+        }
       `}</style>
 
       <div className="shell" style={{ gridTemplateColumns: isMobile ? "1fr" : "250px 1fr" }}>
@@ -2222,6 +2460,10 @@ export default function FinanceApp() {
 
             <button className={activeTab === TAB.CARTOES ? "navBtnActive" : "navBtn"} onClick={() => goTab(TAB.CARTOES)} type="button">
               <span>Cartões</span>
+            </button>
+
+            <button className={activeTab === TAB.COFRE ? "navBtnActive" : "navBtn"} onClick={() => goTab(TAB.COFRE)} type="button">
+              <span>Cofre pessoal</span>
             </button>
 
             <button className={activeTab === TAB.GRAFICOS ? "navBtnActive" : "navBtn"} onClick={() => goTab(TAB.GRAFICOS)} type="button">
@@ -2714,6 +2956,300 @@ export default function FinanceApp() {
                   </div>
                 )}
               </section>
+            </>
+          )}
+
+          {/* ===================== ABA COFRE PESSOAL ===================== */}
+          {activeTab === TAB.COFRE && (
+            <>
+              {!vaultUnlocked ? (
+                <section className="card vaultLocked">
+                  <div className="cardHead">
+                    <div>
+                      <div className="cardTitle">Cofre pessoal</div>
+                      <div className="cardSub">Área protegida para acompanhar os saldos das suas contas.</div>
+                    </div>
+                  </div>
+
+                  <form onSubmit={unlockVault} className="form">
+                    <div className="field">
+                      <label className="label">Senha</label>
+                      <input
+                        type="password"
+                        value={vaultPassword}
+                        onChange={(e) => setVaultPassword(e.target.value)}
+                        className="input"
+                        placeholder="Digite a senha"
+                        autoComplete="current-password"
+                      />
+                      <div className="hint">Senha padrão neste momento: 7485.</div>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <button type="submit" className="btnPrimary">Acessar cofre</button>
+                    </div>
+                  </form>
+                </section>
+              ) : (
+                <>
+                  <section className="miniStatGrid" style={{ gridTemplateColumns: isMobile ? "1fr" : "repeat(4, minmax(0, 1fr))" }}>
+                    <div className="kpi">
+                      <div className="kpiLabel">Total no cofre</div>
+                      <div className="kpiValue">{BRL.format(vaultStats.current.total)}</div>
+                      <div className="cardSub">Posição em {toBRFromYMD(vaultStats.refYmd)}</div>
+                    </div>
+                    <div className="kpi">
+                      <div className="kpiLabel">Variação</div>
+                      <div className="kpiValue" style={vaultStats.delta >= 0 ? { color: "#16A34A" } : { color: "#DC2626" }}>
+                        {vaultStats.delta >= 0 ? "+" : ""}{BRL.format(vaultStats.delta)}
+                      </div>
+                      <div className="cardSub">Comparado com {toBRFromYMD(vaultStats.previousYmd)}</div>
+                    </div>
+                    <div className="kpi">
+                      <div className="kpiLabel">Percentual</div>
+                      <div className="kpiValue">{pctFmt(vaultStats.pct)}</div>
+                      <div className="cardSub">{vaultViewMode === "day" ? "Dia a dia" : vaultViewMode === "week" ? "Semanal" : "Mensal"}</div>
+                    </div>
+                    <div className="kpi">
+                      <div className="kpiLabel">Contas no cofre</div>
+                      <div className="kpiValue">{vaultStats.accountCount}</div>
+                      <div className="cardSub">{vaultStats.byBank.length} banco(s) com saldo</div>
+                    </div>
+                  </section>
+
+                  <section className="card">
+                    <div className="cardHead">
+                      <div>
+                        <div className="cardTitle">Adicionar saldo</div>
+                        <div className="cardSub">Informe banco, local e valor atual. O cofre usa o último saldo conhecido de cada conta.</div>
+                      </div>
+                      <button type="button" className="btn" onClick={() => setVaultUnlocked(false)}>Bloquear</button>
+                    </div>
+
+                    <form onSubmit={addVaultEntry} className="form">
+                      <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 150px 160px" }}>
+                        <div className="field">
+                          <label className="label">Banco / instituição</label>
+                          <input
+                            value={vaultBank}
+                            onChange={(e) => setVaultBank(capitalizeFirstWord(e.target.value))}
+                            placeholder="Ex: Mercado Pago"
+                            className="input"
+                            required
+                          />
+                        </div>
+                        <div className="field">
+                          <label className="label">Onde está</label>
+                          <input
+                            value={vaultPlace}
+                            onChange={(e) => setVaultPlace(capitalizeFirstWord(e.target.value))}
+                            placeholder="Ex: Conta corrente, Cofrinho"
+                            className="input"
+                            required
+                          />
+                        </div>
+                        <div className="field">
+                          <label className="label">Valor</label>
+                          <input
+                            value={vaultAmount || BRL.format(0)}
+                            onChange={(e) => setVaultAmount(formatBRLTyping(e.target.value))}
+                            className="input"
+                            inputMode="decimal"
+                            required
+                          />
+                        </div>
+                        <div className="field">
+                          <label className="label">Data</label>
+                          <input type="date" value={vaultDate} onChange={(e) => setVaultDate(e.target.value)} className="input" required />
+                        </div>
+                      </div>
+
+                      <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "1fr 130px" }}>
+                        <div className="field">
+                          <label className="label">Observação</label>
+                          <input
+                            value={vaultNote}
+                            onChange={(e) => setVaultNote(capitalizeFirstWord(e.target.value))}
+                            placeholder="Ex: saldo conferido pelo app do banco"
+                            className="input"
+                          />
+                        </div>
+                        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end" }}>
+                          <button type="submit" className="btnPrimary">Salvar saldo</button>
+                        </div>
+                      </div>
+                    </form>
+                  </section>
+
+                  <section className="card">
+                    <div className="cardHead">
+                      <div>
+                        <div className="cardTitle">Evolução do cofre</div>
+                        <div className="cardSub">Escolha a data e o tipo de comparação.</div>
+                      </div>
+                      <div className="toolbar">
+                        <input
+                          type="date"
+                          value={vaultReferenceDate}
+                          onChange={(e) => setVaultReferenceDate(e.target.value)}
+                          className="input"
+                          style={{ width: 160 }}
+                        />
+                        <div className="segmented">
+                          {[
+                            ["day", "Dia"],
+                            ["week", "Semana"],
+                            ["month", "Mês"],
+                          ].map(([key, label]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              className={vaultViewMode === key ? "segBtnActive" : "segBtn"}
+                              onClick={() => setVaultViewMode(key)}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "1.1fr .9fr" }}>
+                      <div className="box">
+                        <div className="cardTitle">Valores por banco</div>
+                        {vaultStats.byBank.length === 0 ? (
+                          <div className="empty">Nenhum saldo cadastrado ainda.</div>
+                        ) : (
+                          <div className="table">
+                            {vaultStats.byBank.map((row) => {
+                              const max = Math.max(...vaultStats.byBank.map((x) => x.amount), 1);
+                              const pct = Math.max(0, Math.min(1, row.amount / max));
+                              return (
+                                <div key={row.bank} className="row" style={{ gridTemplateColumns: "1fr 130px" }}>
+                                  <div>
+                                    <div style={{ fontWeight: 900 }}>{row.bank}</div>
+                                    <div className="hint">{row.count} local(is)</div>
+                                    <div className="trendBar" style={{ marginTop: 7 }}>
+                                      <span style={{ width: `${pct * 100}%` }} />
+                                    </div>
+                                  </div>
+                                  <div style={{ fontWeight: 900, textAlign: "right" }}>{BRL.format(row.amount)}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="box">
+                        <div className="cardTitle">Leitura rápida</div>
+                        <div className="hint">
+                          Maior concentração: <b>{vaultStats.byBank[0]?.bank || "—"}</b>
+                          {vaultStats.byBank[0] ? ` (${BRL.format(vaultStats.byBank[0].amount)})` : ""}
+                        </div>
+                        <div className="hint">
+                          Saldo anterior: <b>{BRL.format(vaultStats.previous.total)}</b>
+                        </div>
+                        <div className="hint">
+                          Diferença no período: <b style={vaultStats.delta >= 0 ? { color: "#16A34A" } : { color: "#DC2626" }}>
+                            {vaultStats.delta >= 0 ? "+" : ""}{BRL.format(vaultStats.delta)}
+                          </b>
+                        </div>
+                        <div className="hint">
+                          Sugestão de uso: cadastre novamente os bancos principais quando conferir os apps, assim o gráfico mensal fica mais preciso.
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="card">
+                    <div className="cardHead">
+                      <div>
+                        <div className="cardTitle">Posição atual por conta</div>
+                        <div className="cardSub">Último saldo conhecido até {toBRFromYMD(vaultStats.refYmd)}.</div>
+                      </div>
+                    </div>
+
+                    {vaultStats.current.accounts.length === 0 ? (
+                      <div className="empty">Nenhuma conta para a data selecionada.</div>
+                    ) : (
+                      <div className="table">
+                        <div className="row rowHeader" style={{ gridTemplateColumns: isMobile ? "1fr 120px" : "1fr 1fr 130px 120px" }}>
+                          <div>Banco</div>
+                          {!isMobile && <div>Onde está</div>}
+                          <div style={{ textAlign: "right" }}>Valor</div>
+                          <div style={{ textAlign: "right" }}>Atualizado</div>
+                        </div>
+                        {vaultStats.current.accounts.map((entry) => (
+                          <div key={`${vaultAccountKey(entry)}_${entry.id}`} className="row" style={{ gridTemplateColumns: isMobile ? "1fr 120px" : "1fr 1fr 130px 120px" }}>
+                            <div className="clip" style={{ fontWeight: 900 }} title={entry.bank}>{entry.bank}</div>
+                            {!isMobile && <div className="clip" title={entry.place}>{entry.place}</div>}
+                            <div style={{ fontWeight: 900, textAlign: "right" }}>{BRL.format(Number(entry.amount || 0))}</div>
+                            <div style={{ textAlign: "right" }}>{toBRFromYMD(entry.balanceDate)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="card">
+                    <div className="cardHead">
+                      <div>
+                        <div className="cardTitle">Histórico mensal do cofre</div>
+                        <div className="cardSub">Total estimado no fim de cada mês do ano selecionado.</div>
+                      </div>
+                    </div>
+
+                    <div className="table">
+                      {vaultStats.monthly.map((row) => {
+                        const max = Math.max(...vaultStats.monthly.map((x) => x.total), 1);
+                        const pct = Math.max(0, Math.min(1, row.total / max));
+                        return (
+                          <div key={row.monthName} className="row" style={{ gridTemplateColumns: isMobile ? "90px 1fr 110px" : "120px 1fr 140px 120px" }}>
+                            <div style={{ fontWeight: 900 }}>{row.monthName}</div>
+                            <div className="trendBar"><span style={{ width: `${pct * 100}%` }} /></div>
+                            <div style={{ textAlign: "right", fontWeight: 900 }}>{BRL.format(row.total)}</div>
+                            {!isMobile && (
+                              <div style={{ textAlign: "right", color: row.delta >= 0 ? "#16A34A" : "#DC2626", fontWeight: 900 }}>
+                                {row.delta >= 0 ? "+" : ""}{BRL.format(row.delta)}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+
+                  <section className="card">
+                    <div className="cardHead">
+                      <div>
+                        <div className="cardTitle">Últimos saldos informados</div>
+                        <div className="cardSub">Registros cadastrados manualmente no cofre.</div>
+                      </div>
+                    </div>
+
+                    {vaultEntries.length === 0 ? (
+                      <div className="empty">Nenhum saldo informado ainda.</div>
+                    ) : (
+                      <div className="table">
+                        {vaultEntries.slice(0, 10).map((entry) => (
+                          <div key={entry.id} className="row" style={{ gridTemplateColumns: isMobile ? "1fr 110px" : "110px 1fr 1fr 130px 180px" }}>
+                            <div>{toBRFromYMD(entry.balanceDate)}</div>
+                            <div className="clip" style={{ fontWeight: 900 }} title={entry.bank}>{entry.bank}</div>
+                            {!isMobile && <div className="clip" title={entry.place}>{entry.place}</div>}
+                            <div style={{ textAlign: "right", fontWeight: 900 }}>{BRL.format(Number(entry.amount || 0))}</div>
+                            {!isMobile && (
+                              <div className="statusActionsCell">
+                                <span className="clip" title={entry.note || ""}>{entry.note || "—"}</span>
+                                <ActionBtn icon="🗑" label="Excluir" tone="danger" title="Excluir saldo" onClick={() => removeVaultEntry(entry.id)} />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </>
+              )}
             </>
           )}
 
