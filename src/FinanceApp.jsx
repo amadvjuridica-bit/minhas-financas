@@ -248,6 +248,7 @@ export default function FinanceApp() {
 
   // Cartão / pessoa
   const [isCardPurchase, setIsCardPurchase] = useState(false);
+  const [isCardRefund, setIsCardRefund] = useState(false);
   const [cardName, setCardName] = useState("");
   const [personName, setPersonName] = useState("");
 
@@ -259,6 +260,11 @@ export default function FinanceApp() {
   // Data compra
   const [purchaseDate, setPurchaseDate] = useState(() => ymd(new Date()));
   const [purchaseDateTouched, setPurchaseDateTouched] = useState(false);
+
+  useEffect(() => {
+    if (!isCardPurchase || type !== "expense") setIsCardRefund(false);
+    if (isCardRefund) setIsInstallment(false);
+  }, [isCardPurchase, type, isCardRefund]);
 
   // Aba Cartões
   const [selectedCardTab, setSelectedCardTab] = useState("");
@@ -957,6 +963,7 @@ export default function FinanceApp() {
     }
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
+      .filter((row) => row.value > 0)
       .sort((a, b) => b.value - a.value);
   }, [expensesThisMonth]);
 
@@ -978,6 +985,7 @@ export default function FinanceApp() {
     }
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
+      .filter((row) => row.value > 0)
       .sort((a, b) => b.value - a.value);
   }, [allCardExpensesThisMonth]);
 
@@ -989,6 +997,7 @@ export default function FinanceApp() {
     }
     return Array.from(map.entries())
       .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
+      .filter((row) => row.value > 0)
       .sort((a, b) => b.value - a.value);
   }, [allCardExpensesThisMonth]);
 
@@ -1013,9 +1022,16 @@ export default function FinanceApp() {
 
     const pName = (personName || "").trim();
     const cName = isCardPurchase ? (cardName || "").trim() : "";
+    const isRefund = Boolean(isCardPurchase && type === "expense" && isCardRefund);
+    const savedAmount = isRefund ? -Math.abs(val) : Number(val.toFixed(2));
 
     if (isCardPurchase && !cName) {
       alert("Digite o nome do banco do cartão (ex: Nubank, Inter, Itaú).");
+      return;
+    }
+
+    if (isRefund && isInstallment) {
+      alert("Estorno no cartão deve ser lançado sem parcelamento.");
       return;
     }
 
@@ -1034,7 +1050,7 @@ export default function FinanceApp() {
     if (!isInstallment) {
       await addDocItem({
         type,
-        amount: Number(val.toFixed(2)),
+        amount: Number(savedAmount.toFixed(2)),
         category,
         note: cleanNote === "(sem descrição)" ? "" : cleanNote,
         dueDate: ymd(baseDue),
@@ -1043,6 +1059,7 @@ export default function FinanceApp() {
         createdAt: new Date().toISOString(),
         userEmail,
         isCardPurchase: Boolean(isCardPurchase),
+        isCardRefund: isRefund,
         cardName: cName,
         personName: pName,
         purchaseDate: needsPurchaseDate ? pDate : null,
@@ -1067,6 +1084,7 @@ export default function FinanceApp() {
           createdAt: new Date().toISOString(),
           userEmail,
           isCardPurchase: Boolean(isCardPurchase),
+          isCardRefund: false,
           cardName: cName,
           personName: pName,
           purchaseDate: pDate || null,
@@ -1077,11 +1095,12 @@ export default function FinanceApp() {
 
     setLastAddedSummary({
       type,
-      amount: Number(val.toFixed(2)),
+      amount: Number(savedAmount.toFixed(2)),
       category,
       note: cleanNote,
       dueDate: ymd(baseDue),
       isCardPurchase: Boolean(isCardPurchase),
+      isCardRefund: isRefund,
       cardName: cName,
       personName: pName,
       purchaseDate: needsPurchaseDate ? pDate : null,
@@ -1095,6 +1114,7 @@ export default function FinanceApp() {
     setInstallmentStartPaid(false);
 
     setIsCardPurchase(false);
+    setIsCardRefund(false);
     setCardName("");
     setPersonName("");
     setPurchaseDate(ymd(new Date()));
@@ -1215,7 +1235,8 @@ export default function FinanceApp() {
     }
 
     const parsed = parseBRLInput(raw);
-    if (!parsed.ok || parsed.value < 0) {
+    const canBeNegative = Boolean(it.isCardPurchase && it.type === "expense");
+    if (!parsed.ok || (!canBeNegative && parsed.value < 0)) {
       alert("Valor inválido. Ex.: 150,00");
       return;
     }
@@ -2339,6 +2360,22 @@ export default function FinanceApp() {
           border-color: rgba(29,78,216,.25);
           background: rgba(29,78,216,.05);
         }
+        .amtNegative{
+          color: var(--good);
+        }
+        .refundTag{
+          display:inline-flex;
+          align-items:center;
+          height:20px;
+          padding:0 7px;
+          border-radius:999px;
+          border:1px solid rgba(22,163,74,.20);
+          background:rgba(22,163,74,.08);
+          color:#15803D;
+          font-size:10px;
+          font-weight:900;
+          margin-left:6px;
+        }
         .amtInput{
           height:30px;
           border-radius:8px;
@@ -2571,7 +2608,7 @@ export default function FinanceApp() {
                     </div>
 
                     <div className="field">
-                      <label className="label">Valor</label>
+                      <label className="label">{isCardRefund ? "Valor do estorno" : "Valor"}</label>
                       <input
                         value={amount || BRL.format(0)}
                         onChange={(e) => setAmount(formatBRLTyping(e.target.value))}
@@ -2621,7 +2658,14 @@ export default function FinanceApp() {
 
                   <div className="box">
                     <label className="checkRow">
-                      <input type="checkbox" checked={isCardPurchase} onChange={(e) => setIsCardPurchase(e.target.checked)} />
+                      <input
+                        type="checkbox"
+                        checked={isCardPurchase}
+                        onChange={(e) => {
+                          setIsCardPurchase(e.target.checked);
+                          if (!e.target.checked) setIsCardRefund(false);
+                        }}
+                      />
                       <span>Compra no cartão</span>
                     </label>
 
@@ -2662,13 +2706,33 @@ export default function FinanceApp() {
                           <div className="hint">Vazio = “Meu”. Preencher = filtra por pessoa.</div>
                         </div>
                       </div>
+                      {type === "expense" && (
+                        <label className="checkRow" style={{ marginTop: 2 }}>
+                          <input
+                            type="checkbox"
+                            checked={isCardRefund}
+                            onChange={(e) => {
+                              setIsCardRefund(e.target.checked);
+                              if (e.target.checked) setIsInstallment(false);
+                            }}
+                          />
+                          <span>Estorno no cartão</span>
+                          <span className="hint">O valor digitado será salvo como abatimento da fatura.</span>
+                        </label>
+                      )}
                     )}
                   </div>
 
                   <div className="box">
                     <label className="checkRow">
-                      <input type="checkbox" checked={isInstallment} onChange={(e) => setIsInstallment(e.target.checked)} />
+                      <input
+                        type="checkbox"
+                        checked={isInstallment}
+                        disabled={isCardRefund}
+                        onChange={(e) => setIsInstallment(e.target.checked)}
+                      />
                       <span>Compra parcelada</span>
+                      {isCardRefund && <span className="hint">Estorno é lançado sem parcelas.</span>}
                     </label>
 
                     {isInstallment && (
@@ -2719,7 +2783,7 @@ export default function FinanceApp() {
                       <div style={{ display: "grid", gap: 4 }}>
                         <div style={{ fontWeight: 900, color: "#1D4ED8" }}>Lançamento adicionado</div>
                         <div className="hint" style={{ color: "#0F172A" }}>
-                          {lastAddedSummary.type === "income" ? "Receita" : "Despesa"} • {lastAddedSummary.category} • {lastAddedSummary.note}
+                          {lastAddedSummary.isCardRefund ? "Estorno" : lastAddedSummary.type === "income" ? "Receita" : "Despesa"} • {lastAddedSummary.category} • {lastAddedSummary.note}
                         </div>
                         <div className="hint" style={{ color: "#0F172A" }}>
                           Total salvo: <b>{BRL.format(lastAddedSummary.amount)}</b>
@@ -2809,6 +2873,7 @@ export default function FinanceApp() {
                             <div>{venc}</div>
                             <div className="clip" style={{ fontWeight: 900 }} title={it.note || ""}>
                               {it.note || "(sem descrição)"}
+                              {(it.isCardRefund || Number(it.amount || 0) < 0) && <span className="refundTag">Estorno</span>}
                             </div>
 
                             {isMobile ? null : <div>{isIncome ? "Rec." : "Desp."}</div>}
@@ -2841,7 +2906,7 @@ export default function FinanceApp() {
                                   title="Clique para editar o valor"
                                   onClick={() => startEditAmount(it)}
                                 >
-                                  <span>{BRL.format(Number(it.amount || 0))}</span>
+                                  <span className={Number(it.amount || 0) < 0 ? "amtNegative" : ""}>{BRL.format(Number(it.amount || 0))}</span>
                                 </button>
                               )}
                             </div>
@@ -2896,7 +2961,7 @@ export default function FinanceApp() {
                           {isMobile ? null : <div>{isIncomeGroup ? "Rec." : "Desp."}</div>}
                           {isMobile ? null : <div>Cartão</div>}
 
-                          <div style={{ fontWeight: 900 }}>{BRL.format(Number(it.amount || 0))}</div>
+                          <div className={Number(it.amount || 0) < 0 ? "amtNegative" : ""} style={{ fontWeight: 900 }}>{BRL.format(Number(it.amount || 0))}</div>
                           {isMobile ? null : <div>—</div>}
                           {isMobile ? null : <div className="clip" title={`${it.cardName} • ${it.personDisplay}`}>{it.cardName} • {it.personDisplay}</div>}
 
@@ -3544,6 +3609,7 @@ export default function FinanceApp() {
 
                             <div className="clip" style={{ fontWeight: 900 }} title={it.note || ""}>
                               {it.note || "(sem descrição)"}
+                              {(it.isCardRefund || Number(it.amount || 0) < 0) && <span className="refundTag">Estorno</span>}
                             </div>
 
                             {/* ✅ valor clicável / editável inline */}
@@ -3570,7 +3636,7 @@ export default function FinanceApp() {
                                   title="Clique para editar o valor"
                                   onClick={() => startEditAmount(it)}
                                 >
-                                  <span>{BRL.format(Number(it.amount || 0))}</span>
+                                  <span className={Number(it.amount || 0) < 0 ? "amtNegative" : ""}>{BRL.format(Number(it.amount || 0))}</span>
                                 </button>
                               )}
                             </div>
