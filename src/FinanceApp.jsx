@@ -121,9 +121,17 @@ function compareValues(a, b, dir = "asc") {
     return dir === "asc" ? diff : -diff;
   }
 
-  const aNum = typeof a === "number" ? a : Number(String(a).replace(/[^\d.-]/g, ""));
-  const bNum = typeof b === "number" ? b : Number(String(b).replace(/[^\d.-]/g, ""));
-  if (Number.isFinite(aNum) && Number.isFinite(bNum)) {
+  // Só compara como número quando os dois valores realmente são numéricos.
+  // Antes, textos como "Pessoa" e "Pago" viravam Number("") === 0,
+  // fazendo todas as ordenações textuais parecerem não funcionar.
+  const numericPattern = /^-?\d+(?:[.,]\d+)?$/;
+  const aRaw = String(a).trim();
+  const bRaw = String(b).trim();
+  const aIsNumeric = typeof a === "number" || numericPattern.test(aRaw);
+  const bIsNumeric = typeof b === "number" || numericPattern.test(bRaw);
+  const aNum = typeof a === "number" ? a : Number(aRaw.replace(",", "."));
+  const bNum = typeof b === "number" ? b : Number(bRaw.replace(",", "."));
+  if (aIsNumeric && bIsNumeric && Number.isFinite(aNum) && Number.isFinite(bNum)) {
     const diff = aNum - bNum;
     return dir === "asc" ? diff : -diff;
   }
@@ -196,6 +204,8 @@ const TAB = {
   RECORRENTES: "recorrentes",
   PESSOAS: "pessoas",
 };
+
+const ALL_CARDS_TAB = "__todos_os_cartoes__";
 
 /* ===================== COMPONENTE ===================== */
 
@@ -275,6 +285,10 @@ export default function FinanceApp() {
   const [invoiceCheckedUntilDraft, setInvoiceCheckedUntilDraft] = useState("");
   const [invoiceNoteDraft, setInvoiceNoteDraft] = useState("");
   const [cardSettingsSaveStatus, setCardSettingsSaveStatus] = useState("");
+  const [cardReceiptChecks, setCardReceiptChecks] = useState([]);
+  const [receiptAnswers, setReceiptAnswers] = useState({});
+  const [receiptSaving, setReceiptSaving] = useState(false);
+  const [dismissedReceiptInvoices, setDismissedReceiptInvoices] = useState(() => new Set());
 
   // Cofre pessoal
   const [vaultEntries, setVaultEntries] = useState([]);
@@ -328,6 +342,17 @@ export default function FinanceApp() {
       (err) => console.error("Firestore onSnapshot error:", err)
     );
 
+    return () => unsub();
+  }, [userUid]);
+
+  useEffect(() => {
+    if (!userUid) return;
+    const colRef = collection(db, "users", userUid, "cardReceiptChecks");
+    const unsub = onSnapshot(
+      colRef,
+      (snap) => setCardReceiptChecks(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (err) => console.error("Card receipt checks onSnapshot error:", err)
+    );
     return () => unsub();
   }, [userUid]);
 
@@ -1327,13 +1352,18 @@ export default function FinanceApp() {
 
   useEffect(() => {
     if (activeTab !== TAB.CARTOES) return;
-    if (!selectedCardTab && cardsFound.length > 0) setSelectedCardTab(cardsFound[0]);
+    if (!selectedCardTab && cardsFound.length > 0) setSelectedCardTab(ALL_CARDS_TAB);
   }, [activeTab, selectedCardTab, cardsFound]);
+
+  const isAllCardsSelected = selectedCardTab === ALL_CARDS_TAB;
+  const selectedCardLabel = isAllCardsSelected ? "Todos os cartões" : selectedCardTab;
 
   const cardItemsThisMonthBase = useMemo(() => {
     if (!selectedCardTab) return [];
     let list = itemsThisMonthBase.filter(
-      (it) => it.isCardPurchase && (it.cardName || "").trim() === selectedCardTab
+      (it) =>
+        it.isCardPurchase &&
+        (isAllCardsSelected || normalizeStr(it.cardName) === normalizeStr(selectedCardTab))
     );
 
     const pfRaw = normalizeStr(personFilter);
@@ -1343,12 +1373,13 @@ export default function FinanceApp() {
     }
 
     return list;
-  }, [itemsThisMonthBase, selectedCardTab, personFilter]);
+  }, [itemsThisMonthBase, selectedCardTab, personFilter, isAllCardsSelected]);
 
   const cardItemsThisMonth = useMemo(() => {
     const { key, dir } = sortCards;
 
     function getSortVal(row) {
+      if (key === "card") return (row.cardName || "").trim();
       if (key === "dueDate") return row.dueDate || "";
       if (key === "purchaseDate") return row.purchaseDate || "";
       if (key === "note") return row.note || "";
@@ -1410,25 +1441,25 @@ export default function FinanceApp() {
   }, [cardDueDayByCard]);
 
   const selectedCardDueDay = useMemo(() => {
-    if (!selectedCardTab) return null;
+    if (!selectedCardTab || isAllCardsSelected) return null;
     return cardDueDayByCard.get(selectedCardTab) ?? cardDueDayByNormalizedName.get(normalizeStr(selectedCardTab)) ?? null;
-  }, [selectedCardTab, cardDueDayByCard, cardDueDayByNormalizedName]);
+  }, [selectedCardTab, isAllCardsSelected, cardDueDayByCard, cardDueDayByNormalizedName]);
 
   const selectedCardSetting = useMemo(() => {
-    if (!selectedCardTab) return null;
+    if (!selectedCardTab || isAllCardsSelected) return null;
     return cardSettingsByName.get(normalizeStr(selectedCardTab)) ?? null;
-  }, [selectedCardTab, cardSettingsByName]);
+  }, [selectedCardTab, isAllCardsSelected, cardSettingsByName]);
 
   useEffect(() => {
-    if (!selectedCardTab) return;
+    if (!selectedCardTab || isAllCardsSelected) return;
     setCardDueDraft(selectedCardDueDay ?? Number(dueDay || 10));
     setInvoiceRefDraft(selectedCardSetting?.invoiceRef || "");
     setInvoiceCheckedUntilDraft(selectedCardSetting?.invoiceCheckedUntil || "");
     setInvoiceNoteDraft(selectedCardSetting?.invoiceNote || "");
-  }, [selectedCardTab, selectedCardDueDay, dueDay, selectedCardSetting]);
+  }, [selectedCardTab, isAllCardsSelected, selectedCardDueDay, dueDay, selectedCardSetting]);
 
   async function saveSelectedCardDueDay() {
-    if (!userUid || !selectedCardTab) return;
+    if (!userUid || !selectedCardTab || isAllCardsSelected) return;
     setCardSettingsSaveStatus("Salvando...");
 
     const due = Number(cardDueDraft || 0);
@@ -1534,6 +1565,110 @@ export default function FinanceApp() {
     }
     return map;
   }, [allCardExpensesThisMonth]);
+
+  const pendingReceiptInvoices = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const oldestAccepted = addDays(today, -62);
+    const savedByKey = new Map(
+      cardReceiptChecks.map((row) => [
+        `${normalizeStr(row.cardName)}|${row.dueDate || ""}|${normalizeStr(row.personName)}`,
+        row,
+      ])
+    );
+    const groups = new Map();
+
+    for (const it of items) {
+      if (!it.isCardPurchase || it.type !== "expense" || !it.id) continue;
+      const personName = (it.personName || "").trim();
+      const card = (it.cardName || "").trim();
+      const dueDate = String(it.dueDate || "").slice(0, 10);
+      if (!personName || !card || !dueDate) continue;
+
+      const due = parseYMDLocal(dueDate);
+      if (Number.isNaN(due.getTime()) || due >= today || due < oldestAccepted) continue;
+
+      const personKey = `${normalizeStr(card)}|${dueDate}|${normalizeStr(personName)}`;
+      if (savedByKey.get(personKey)?.received === true) continue;
+
+      const invoiceKey = `${normalizeStr(card)}|${dueDate}`;
+      const invoice = groups.get(invoiceKey) || { key: invoiceKey, cardName: card, dueDate, people: new Map() };
+      const person = invoice.people.get(normalizeStr(personName)) || {
+        key: personKey,
+        personName,
+        amount: 0,
+        transactionIds: [],
+        existing: savedByKey.get(personKey) || null,
+      };
+      person.amount += Number(it.amount || 0);
+      person.transactionIds.push(it.id);
+      invoice.people.set(normalizeStr(personName), person);
+      groups.set(invoiceKey, invoice);
+    }
+
+    return Array.from(groups.values())
+      .map((invoice) => ({
+        ...invoice,
+        people: Array.from(invoice.people.values())
+          .filter((person) => person.amount > 0)
+          .map((person) => ({ ...person, amount: Number(person.amount.toFixed(2)) }))
+          .sort((a, b) => compareValues(a.personName, b.personName, "asc")),
+      }))
+      .filter((invoice) => invoice.people.length > 0 && !dismissedReceiptInvoices.has(invoice.key))
+      .sort((a, b) => compareValues(a.dueDate, b.dueDate, "asc") || compareValues(a.cardName, b.cardName, "asc"));
+  }, [items, cardReceiptChecks, dismissedReceiptInvoices]);
+
+  const activeReceiptInvoice = pendingReceiptInvoices[0] || null;
+
+  useEffect(() => {
+    if (!activeReceiptInvoice) {
+      setReceiptAnswers({});
+      return;
+    }
+    const next = {};
+    for (const person of activeReceiptInvoice.people) {
+      next[person.key] = person.existing?.received === false ? "no" : "";
+    }
+    setReceiptAnswers(next);
+  }, [activeReceiptInvoice?.key]);
+
+  async function saveReceiptInvoiceCheck() {
+    if (!userUid || !activeReceiptInvoice || receiptSaving) return;
+    const unanswered = activeReceiptInvoice.people.some((person) => !receiptAnswers[person.key]);
+    if (unanswered) {
+      alert("Informe se o valor foi recebido de cada pessoa.");
+      return;
+    }
+
+    setReceiptSaving(true);
+    try {
+      await Promise.all(
+        activeReceiptInvoice.people.map((person) => {
+          const payload = {
+            cardName: activeReceiptInvoice.cardName,
+            dueDate: activeReceiptInvoice.dueDate,
+            personName: person.personName,
+            amount: person.amount,
+            received: receiptAnswers[person.key] === "yes",
+            transactionIds: person.transactionIds,
+            checkedAt: new Date().toISOString(),
+          };
+          return person.existing?.id
+            ? updateDoc(doc(db, "users", userUid, "cardReceiptChecks", person.existing.id), payload)
+            : addDoc(collection(db, "users", userUid, "cardReceiptChecks"), {
+                ...payload,
+                createdAt: new Date().toISOString(),
+              });
+        })
+      );
+      setDismissedReceiptInvoices((current) => new Set([...current, activeReceiptInvoice.key]));
+    } catch (err) {
+      console.error("Erro ao salvar conferência de recebimentos:", err);
+      alert("Não foi possível salvar a conferência. Tente novamente.");
+    } finally {
+      setReceiptSaving(false);
+    }
+  }
 
   const selectedCardTotalsByPerson = useMemo(() => {
     const map = new Map();
@@ -1800,7 +1935,7 @@ export default function FinanceApp() {
       const status = it.paid ? "Pago" : "Em aberto";
 
       return {
-        Cartão: selectedCardTab,
+        Cartão: (it.cardName || "").trim() || "—",
         Vencimento: venc,
         Compra: compra,
         Descrição: desc,
@@ -1811,14 +1946,17 @@ export default function FinanceApp() {
       };
     });
 
-    downloadXLSX(rows, `cartao_${normalizeStr(selectedCardTab || "cartao")}_${year}-${pad2(monthIndex + 1)}`);
+    const fileLabel = isAllCardsSelected ? "todos_os_cartoes" : normalizeStr(selectedCardTab || "cartao");
+    downloadXLSX(rows, `cartao_${fileLabel}_${year}-${pad2(monthIndex + 1)}`);
   }
 
   function exportCartoesPDF() {
-    const title = `Cartão — ${selectedCardTab || ""}`;
+    const title = isAllCardsSelected ? "Cartões — Analítico unificado" : `Cartão — ${selectedCardTab || ""}`;
     const subtitle = `${monthLabel} / ${year}${selectedCardDueDay ? ` • Venc. ${pad2(selectedCardDueDay)}` : ""}`;
 
-    const columns = ["Venc.", "Compra", "Descrição", "Valor", "Parc.", "Pessoa", "Status"];
+    const columns = isAllCardsSelected
+      ? ["Cartão", "Venc.", "Compra", "Descrição", "Valor", "Parc.", "Pessoa", "Status"]
+      : ["Venc.", "Compra", "Descrição", "Valor", "Parc.", "Pessoa", "Status"];
     const body = cardItemsThisMonth.map((it) => {
       const venc = toVencBR(it.dueDate);
       const compra = toBRFromYMD(it.purchaseDate);
@@ -1827,7 +1965,8 @@ export default function FinanceApp() {
       const parc = it.installment ? `${it.installment.index}/${it.installment.total}` : "—";
       const pessoa = displayPersonName(it.personName);
       const status = it.paid ? "Pago" : "Em aberto";
-      return [venc, compra, desc, valor, parc, pessoa, status];
+      const row = [venc, compra, desc, valor, parc, pessoa, status];
+      return isAllCardsSelected ? [(it.cardName || "").trim() || "—", ...row] : row;
     });
 
     downloadPDF({
@@ -1835,7 +1974,7 @@ export default function FinanceApp() {
       subtitle,
       columns,
       body,
-      filenameBase: `cartao_${normalizeStr(selectedCardTab || "cartao")}_${year}-${pad2(monthIndex + 1)}_A4`,
+      filenameBase: `cartao_${isAllCardsSelected ? "todos_os_cartoes" : normalizeStr(selectedCardTab || "cartao")}_${year}-${pad2(monthIndex + 1)}_A4`,
     });
   }
 
@@ -2437,7 +2576,91 @@ export default function FinanceApp() {
           max-width:460px;
           margin:34px auto 0;
         }
+        .receiptOverlay{
+          position:fixed;
+          inset:0;
+          z-index:1000;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          padding:18px;
+          background:rgba(15,23,42,.72);
+          backdrop-filter:blur(3px);
+        }
+        .receiptModal{
+          width:min(760px, 100%);
+          max-height:90vh;
+          overflow:auto;
+          background:#fff;
+          border-radius:16px;
+          box-shadow:0 24px 70px rgba(15,23,42,.32);
+          padding:22px;
+        }
+        .receiptPerson{
+          display:grid;
+          grid-template-columns:minmax(0, 1fr) 140px 220px;
+          gap:12px;
+          align-items:center;
+          padding:12px 0;
+          border-bottom:1px solid var(--line2);
+        }
+        .receiptChoice{ display:flex; gap:8px; }
+        .receiptChoice button{ flex:1; }
+        @media (max-width:700px){
+          .receiptPerson{ grid-template-columns:1fr; }
+        }
       `}</style>
+
+      {activeReceiptInvoice && (
+        <div className="receiptOverlay" role="dialog" aria-modal="true" aria-label="Conferência obrigatória de recebimentos">
+          <div className="receiptModal">
+            <div className="cardTitle" style={{ fontSize: 20 }}>Conferência obrigatória de recebimentos</div>
+            <div className="cardSub" style={{ marginTop: 6 }}>
+              O cartão <b>{activeReceiptInvoice.cardName}</b> venceu em <b>{toBRFromYMD(activeReceiptInvoice.dueDate)}</b>.
+              Confirme o recebimento de cada pessoa antes de continuar.
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              {activeReceiptInvoice.people.map((person) => (
+                <div className="receiptPerson" key={person.key}>
+                  <div>
+                    <div style={{ fontWeight: 900 }}>{person.personName}</div>
+                    <div className="hint">Valor devido nesta fatura</div>
+                  </div>
+                  <div style={{ fontWeight: 900, textAlign: isMobile ? "left" : "right" }}>
+                    {BRL.format(person.amount)}
+                  </div>
+                  <div className="receiptChoice">
+                    <button
+                      type="button"
+                      className={receiptAnswers[person.key] === "yes" ? "btnPrimary" : "btn"}
+                      onClick={() => setReceiptAnswers((current) => ({ ...current, [person.key]: "yes" }))}
+                    >
+                      Recebido
+                    </button>
+                    <button
+                      type="button"
+                      className={receiptAnswers[person.key] === "no" ? "btnPrimary" : "btn"}
+                      onClick={() => setReceiptAnswers((current) => ({ ...current, [person.key]: "no" }))}
+                    >
+                      Não recebido
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="hint" style={{ marginTop: 12 }}>
+              Itens marcados como “Não recebido” voltarão a ser cobrados na próxima abertura do aplicativo.
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+              <button type="button" className="btnPrimary" onClick={saveReceiptInvoiceCheck} disabled={receiptSaving}>
+                {receiptSaving ? "Salvando..." : "Salvar conferência e continuar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="shell" style={{ gridTemplateColumns: isMobile ? "1fr" : "250px 1fr" }}>
         {/* Sidebar */}
@@ -2670,6 +2893,7 @@ export default function FinanceApp() {
                     </label>
 
                     {isCardPurchase && (
+                      <>
                       <div className="grid" style={{ gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))" }}>
                         <div className="field">
                           <label className="label">Banco do cartão</label>
@@ -2720,6 +2944,7 @@ export default function FinanceApp() {
                           <span className="hint">O valor digitado será salvo como abatimento da fatura.</span>
                         </label>
                       )}
+                      </>
                     )}
                   </div>
 
@@ -3371,6 +3596,15 @@ export default function FinanceApp() {
                 ) : (
                   <>
                     <div className="pills" style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCardTab(ALL_CARDS_TAB)}
+                        className={isAllCardsSelected ? "pillBtn pillBtnActive" : "pillBtn"}
+                        title="Visualizar e baixar o analítico unificado de todos os cartões"
+                      >
+                        <span>Todos</span>
+                        <span style={{ fontWeight: 900 }}>{BRL.format(allCardsTotals.total)}</span>
+                      </button>
                       {cardsFound.map((c) => {
                         const day = cardDueDayByCard.get(c) ?? null;
                         const totalCard = allCardsTotalsByCardMap.get(c) || 0;
@@ -3408,7 +3642,7 @@ export default function FinanceApp() {
                       </div>
                     </section>
 
-                    <div className="box" style={{ marginTop: 10, padding: 10 }}>
+                    {!isAllCardsSelected && <div className="box" style={{ marginTop: 10, padding: 10 }}>
                       <div
                         className="grid"
                         style={{
@@ -3487,7 +3721,7 @@ export default function FinanceApp() {
                           {selectedCardSetting?.invoiceNote ? ` • ${selectedCardSetting.invoiceNote}` : ""}
                         </div>
                       )}
-                    </div>
+                    </div>}
 
                     <div style={{ marginTop: 10 }}>
                       <div className="label">Filtrar por pessoa</div>
@@ -3508,7 +3742,7 @@ export default function FinanceApp() {
               <div className="card" style={{ marginTop: 10 }}>
                 <div className="cardHead">
                   <div>
-                    <div className="cardTitle">Totais por pessoa — {selectedCardTab}</div>
+                    <div className="cardTitle">Totais por pessoa — {selectedCardLabel}</div>
                     <div className="cardSub">Somatório das despesas deste cartão</div>
                   </div>
                 </div>
@@ -3542,7 +3776,7 @@ export default function FinanceApp() {
                   <div className="cardHead">
                     <div>
                       <div className="cardTitle">
-                        Lançamentos do cartão — {selectedCardTab}
+                        Lançamentos — {selectedCardLabel}
                         {selectedCardDueDay ? ` (venc. dia ${pad2(selectedCardDueDay)})` : ""}
                       </div>
                       <div className="cardSub">Item por item (inclui coluna “Compra”). Dica: clique no valor para editar.</div>
@@ -3567,9 +3801,12 @@ export default function FinanceApp() {
                         style={{
                           gridTemplateColumns: isMobile
                             ? "120px 1fr 260px"
-                            : "120px 110px 1.6fr 120px 90px 140px 300px",
+                            : isAllCardsSelected
+                              ? "130px 120px 110px 1.5fr 120px 90px 140px 300px"
+                              : "120px 110px 1.6fr 120px 90px 140px 300px",
                         }}
                       >
+                        {!isMobile && isAllCardsSelected ? <SortHeader table="card" colKey="card" label="Cartão" /> : null}
                         <SortHeader table="card" colKey="dueDate" label="Venc." />
                         {isMobile ? null : <SortHeader table="card" colKey="purchaseDate" label="Compra" />}
                         <SortHeader table="card" colKey="note" label="Descrição" />
@@ -3596,9 +3833,16 @@ export default function FinanceApp() {
                             style={{
                               gridTemplateColumns: isMobile
                                 ? "120px 1fr 260px"
-                                : "120px 110px 1.6fr 120px 90px 140px 300px",
+                                : isAllCardsSelected
+                                  ? "130px 120px 110px 1.5fr 120px 90px 140px 300px"
+                                  : "120px 110px 1.6fr 120px 90px 140px 300px",
                             }}
                           >
+                            {!isMobile && isAllCardsSelected ? (
+                              <div className="clip" title={(it.cardName || "").trim() || "—"}>
+                                {(it.cardName || "").trim() || "—"}
+                              </div>
+                            ) : null}
                             <div>{venc}</div>
 
                             {isMobile ? null : (
