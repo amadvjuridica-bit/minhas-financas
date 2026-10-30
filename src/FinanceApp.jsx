@@ -2507,6 +2507,16 @@ export default function FinanceApp() {
           flex-wrap:nowrap;
           min-width: 0;
         }
+        .cardTransactionsTable{ overflow-x:auto; }
+        .cardTransactionsTable .row{ min-width:max-content; }
+        .cardTransactionsTable .statusActionsCell{
+          flex-wrap:wrap;
+          justify-content:flex-start;
+          gap:6px;
+          min-width:0;
+        }
+        .cardTransactionsTable .statusActionsCell > *{ flex-shrink:0; }
+        .cardTransactionsTable .row > *{ min-width:0; }
 
         .thBtn{
           width:100%;
@@ -3857,15 +3867,15 @@ export default function FinanceApp() {
                   {cardItemsThisMonth.length === 0 ? (
                     <div className="empty">Nenhuma compra registrada neste cartão (no mês filtrado).</div>
                   ) : (
-                    <div className="table">
+                    <div className="table cardTransactionsTable">
                       <div
                         className="row rowHeader"
                         style={{
                           gridTemplateColumns: isMobile
-                            ? "120px 1fr 260px"
+                            ? "90px minmax(110px, 1fr) 110px 160px"
                             : isAllCardsSelected
-                              ? "130px 120px 110px 1.5fr 120px 90px 140px 300px"
-                              : "120px 110px 1.6fr 120px 90px 140px 300px",
+                              ? "130px 120px 110px minmax(140px, 1.5fr) 120px 70px 140px 260px"
+                              : "120px 110px minmax(140px, 1.6fr) 120px 70px 140px 260px",
                         }}
                       >
                         {!isMobile && isAllCardsSelected ? <SortHeader table="card" colKey="card" label="Cartão" /> : null}
@@ -3894,10 +3904,10 @@ export default function FinanceApp() {
                             className={`row ${alt}`}
                             style={{
                               gridTemplateColumns: isMobile
-                                ? "120px 1fr 260px"
+                                ? "90px minmax(110px, 1fr) 110px 160px"
                                 : isAllCardsSelected
-                                  ? "130px 120px 110px 1.5fr 120px 90px 140px 300px"
-                                  : "120px 110px 1.6fr 120px 90px 140px 300px",
+                                  ? "130px 120px 110px minmax(140px, 1.5fr) 120px 70px 140px 260px"
+                                  : "120px 110px minmax(140px, 1.6fr) 120px 70px 140px 260px",
                             }}
                           >
                             {!isMobile && isAllCardsSelected ? (
