@@ -2507,8 +2507,13 @@ export default function FinanceApp() {
           flex-wrap:nowrap;
           min-width: 0;
         }
-        .cardTransactionsTable{ overflow-x:auto; }
-        .cardTransactionsTable .row{ min-width:max-content; }
+        .cardTransactionsTable{ min-width:0; width:100%; }
+        .cardTransactionsTable .row{ min-width:0; width:100%; }
+        .cardTransactionsTable .act__label{ display:none; }
+        .cardTransactionsTable .act{ width:28px; padding:0; justify-content:center; }
+        .cardTransactionsTable .pill{ min-width:0; padding:6px; font-size:10px; }
+        .cardTransactionsTable .thBtn{ font-size:10px; gap:2px; }
+        .cardTransactionsTable .row{ font-size:11px; gap:6px; }
         .cardTransactionsTable .statusActionsCell{
           flex-wrap:wrap;
           justify-content:flex-start;
@@ -3872,10 +3877,10 @@ export default function FinanceApp() {
                         className="row rowHeader"
                         style={{
                           gridTemplateColumns: isMobile
-                            ? "90px minmax(110px, 1fr) 110px 160px"
+                            ? "68px minmax(0, 1fr) 80px 94px"
                             : isAllCardsSelected
-                              ? "130px 120px 110px minmax(140px, 1.5fr) 120px 70px 140px 260px"
-                              : "120px 110px minmax(140px, 1.6fr) 120px 70px 140px 260px",
+                              ? "minmax(0, .9fr) 80px 80px minmax(0, 1.5fr) 95px 42px minmax(0, .8fr) 170px"
+                              : "80px 80px minmax(0, 1.6fr) 95px 42px minmax(0, .8fr) 170px",
                         }}
                       >
                         {!isMobile && isAllCardsSelected ? <SortHeader table="card" colKey="card" label="Cartão" /> : null}
@@ -3904,10 +3909,10 @@ export default function FinanceApp() {
                             className={`row ${alt}`}
                             style={{
                               gridTemplateColumns: isMobile
-                                ? "90px minmax(110px, 1fr) 110px 160px"
+                                ? "68px minmax(0, 1fr) 80px 94px"
                                 : isAllCardsSelected
-                                  ? "130px 120px 110px minmax(140px, 1.5fr) 120px 70px 140px 260px"
-                                  : "120px 110px minmax(140px, 1.6fr) 120px 70px 140px 260px",
+                                  ? "minmax(0, .9fr) 80px 80px minmax(0, 1.5fr) 95px 42px minmax(0, .8fr) 170px"
+                                  : "80px 80px minmax(0, 1.6fr) 95px 42px minmax(0, .8fr) 170px",
                             }}
                           >
                             {!isMobile && isAllCardsSelected ? (
