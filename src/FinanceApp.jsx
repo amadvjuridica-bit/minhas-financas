@@ -2542,54 +2542,10 @@ export default function FinanceApp() {
           flex-wrap:nowrap;
           min-width: 0;
         }
-        .cardTransactionsTable{ min-width:0; width:100%; }
-        .cardTransactionsTable .row{ min-width:0; width:100%; }
-        .cardTransactionsTable .act__label{ display:none; }
-        .cardTransactionsTable .act{ width:30px; height:30px; padding:0; justify-content:center; }
-        .cardTransactionsTable .pill{ min-width:82px; padding:7px 8px; font-size:11px; }
-        .cardTransactionsTable .thBtn{ font-size:11px; gap:4px; }
-        .cardTransactionsTable .row{ font-size:12px; gap:10px; }
-        .cardTransactionsTable .statusActionsCell{
-          flex-wrap:wrap;
-          justify-content:flex-start;
-          gap:6px;
-          min-width:0;
-        }
-        .cardTransactionsTable .statusActionsCell > *{ flex-shrink:0; }
-        .cardTransactionsTable .row > *{ min-width:0; }
-        .cardTransactionsTable, .ledgerTable{
-          gap:0; border:1px solid var(--line); border-radius:6px; overflow:hidden;
-        }
-        .cardTransactionsTable .row, .ledgerTable .row{
-          border:0; border-bottom:1px solid var(--line2); border-radius:0;
-          min-height:48px; padding:8px 12px; font-weight:500;
-        }
-        .cardTransactionsTable .row:last-child, .ledgerTable .row:last-child{ border-bottom:0; }
-        .cardTransactionsTable .rowHeader, .ledgerTable .rowHeader{ min-height:40px; background:#EDF1F5; }
-        .cardTransactionsTable .row:not(.rowHeader):hover, .ledgerTable .row:not(.rowHeader):hover{ background:#F0F7F5; }
-        .cardTransactionsTable .statusActionsCell{ justify-content:flex-end; gap:5px; }
-        .cardTransactionsTable .amtCell{ justify-content:flex-end; }
-        .cardTransactionsTable .amtClickable{ padding:4px 0; white-space:nowrap; }
-        .ledgerTable .row > *{ min-width:0; }
-        .ledgerTable .act__label{ display:none; }
-        .ledgerTable .act[title="Ver itens detalhados na aba Cartões"] .act__label,
-        .cardTransactionsTable .act[title="Transferir para outro cartão"] .act__label{ display:inline; }
-        .cardTransactionsTable .act[title="Transferir para outro cartão"]{ width:auto; padding:0 8px; }
-        .ledgerTable .act{ height:30px; padding:0 8px; }
-        .ledgerTable .statusActionsCell{ flex-wrap:wrap; gap:5px; }
-        .ledgerTable .pill{ min-width:82px; padding:7px 8px; font-size:11px; }
-        @media(min-width:1100px){
-          .ledgerTable .row{ grid-template-columns:90px minmax(0,1.1fr) 55px 80px 115px 55px minmax(0,1fr) 230px !important; }
-          .ledgerTable, .cardTransactionsTable{ max-width:1440px; }
-          .cardTransactionsTable .statusActionsCell{ flex-wrap:wrap; }
-        }
-        @media(max-width:1099px){
-          .ledgerTable .row{ grid-template-columns:70px minmax(0,1fr) 85px 100px !important; gap:6px; padding:8px; }
-          .cardTransactionsTable .row{ padding:8px; gap:6px; font-size:11px; }
-          .cardTransactionsTable .pill{ min-width:0; width:100%; }
-          .cardTransactionsTable .act[title="Transferir para outro cartão"] .act__label{ display:none; }
-          .cardTransactionsTable .act, .cardTransactionsTable .act[title="Transferir para outro cartão"]{ width:26px; padding:0; }
-        }
+        .cardTransactionsTable .act[title="Transferir para outro cartão"] .act__label{ display:none; }
+        .cardTransactionsTable .act[title="Transferir para outro cartão"]{ width:28px; padding:0; justify-content:center; }
+        .cardTransactionsTable .statusActionsCell{ flex-wrap:wrap; }
+
 
         .thBtn{
           width:100%;
@@ -3947,8 +3903,8 @@ export default function FinanceApp() {
                           gridTemplateColumns: isMobile
                             ? "68px minmax(0, 1fr) 80px 94px"
                             : isAllCardsSelected
-                              ? "minmax(0, 1fr) 90px 90px minmax(0, 1.2fr) 105px 45px minmax(0, 1fr) 250px"
-                              : "90px 90px minmax(0, 1.2fr) 105px 45px minmax(0, 1fr) 250px",
+                              ? "130px 120px 110px 1.5fr 120px 90px 140px 300px"
+                              : "120px 110px 1.6fr 120px 90px 140px 300px",
                         }}
                       >
                         {!isMobile && isAllCardsSelected ? <SortHeader table="card" colKey="card" label="Cartão" /> : null}
@@ -3979,8 +3935,8 @@ export default function FinanceApp() {
                               gridTemplateColumns: isMobile
                                 ? "68px minmax(0, 1fr) 80px 94px"
                                 : isAllCardsSelected
-                                  ? "minmax(0, 1fr) 90px 90px minmax(0, 1.2fr) 105px 45px minmax(0, 1fr) 250px"
-                                  : "90px 90px minmax(0, 1.2fr) 105px 45px minmax(0, 1fr) 250px",
+                                  ? "130px 120px 110px 1.5fr 120px 90px 140px 300px"
+                                  : "120px 110px 1.6fr 120px 90px 140px 300px",
                             }}
                           >
                             {!isMobile && isAllCardsSelected ? (
