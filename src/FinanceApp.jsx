@@ -2572,15 +2572,23 @@ export default function FinanceApp() {
         .cardTransactionsTable .amtClickable{ padding:4px 0; white-space:nowrap; }
         .ledgerTable .row > *{ min-width:0; }
         .ledgerTable .act__label{ display:none; }
+        .ledgerTable .act[title="Ver itens detalhados na aba Cartões"] .act__label,
+        .cardTransactionsTable .act[title="Transferir para outro cartão"] .act__label{ display:inline; }
+        .cardTransactionsTable .act[title="Transferir para outro cartão"]{ width:auto; padding:0 8px; }
+        .ledgerTable .act{ height:30px; padding:0 8px; }
         .ledgerTable .statusActionsCell{ flex-wrap:wrap; gap:5px; }
         .ledgerTable .pill{ min-width:82px; padding:7px 8px; font-size:11px; }
         @media(min-width:1100px){
-          .ledgerTable .row{ grid-template-columns:90px minmax(0,1.8fr) 55px 75px 110px 45px minmax(0,1fr) 175px !important; }
+          .ledgerTable .row{ grid-template-columns:90px minmax(0,1.1fr) 55px 80px 115px 55px minmax(0,1fr) 230px !important; }
+          .ledgerTable, .cardTransactionsTable{ max-width:1440px; }
+          .cardTransactionsTable .statusActionsCell{ flex-wrap:wrap; }
         }
         @media(max-width:1099px){
           .ledgerTable .row{ grid-template-columns:70px minmax(0,1fr) 85px 100px !important; gap:6px; padding:8px; }
           .cardTransactionsTable .row{ padding:8px; gap:6px; font-size:11px; }
           .cardTransactionsTable .pill{ min-width:0; width:100%; }
+          .cardTransactionsTable .act[title="Transferir para outro cartão"] .act__label{ display:none; }
+          .cardTransactionsTable .act, .cardTransactionsTable .act[title="Transferir para outro cartão"]{ width:26px; padding:0; }
         }
 
         .thBtn{
@@ -3939,8 +3947,8 @@ export default function FinanceApp() {
                           gridTemplateColumns: isMobile
                             ? "68px minmax(0, 1fr) 80px 94px"
                             : isAllCardsSelected
-                              ? "minmax(0, 1fr) 90px 90px minmax(0, 1.7fr) 105px 45px minmax(0, 1fr) 200px"
-                              : "90px 90px minmax(0, 2fr) 105px 45px minmax(0, 1fr) 200px",
+                              ? "minmax(0, 1fr) 90px 90px minmax(0, 1.2fr) 105px 45px minmax(0, 1fr) 250px"
+                              : "90px 90px minmax(0, 1.2fr) 105px 45px minmax(0, 1fr) 250px",
                         }}
                       >
                         {!isMobile && isAllCardsSelected ? <SortHeader table="card" colKey="card" label="Cartão" /> : null}
@@ -3971,8 +3979,8 @@ export default function FinanceApp() {
                               gridTemplateColumns: isMobile
                                 ? "68px minmax(0, 1fr) 80px 94px"
                                 : isAllCardsSelected
-                                  ? "minmax(0, 1fr) 90px 90px minmax(0, 1.7fr) 105px 45px minmax(0, 1fr) 200px"
-                                  : "90px 90px minmax(0, 2fr) 105px 45px minmax(0, 1fr) 200px",
+                                  ? "minmax(0, 1fr) 90px 90px minmax(0, 1.2fr) 105px 45px minmax(0, 1fr) 250px"
+                                  : "90px 90px minmax(0, 1.2fr) 105px 45px minmax(0, 1fr) 250px",
                             }}
                           >
                             {!isMobile && isAllCardsSelected ? (
