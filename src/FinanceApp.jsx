@@ -1490,32 +1490,44 @@ export default function FinanceApp() {
     }
   }
 
-  async function transferCardItem(item) {
-    if (!userUid || !item?.id) return;
-    const destination = window.prompt(`Transferir para qual cartão?\n${cardsFound.join(" / ")}`)?.trim();
-    if (!destination) return;
-    const target = cardsFound.find((name) => normalizeStr(name) === normalizeStr(destination));
+  const [transferDraft, setTransferDraft] = useState(null);
+  const [transferDestination, setTransferDestination] = useState("");
+  const [transferFuture, setTransferFuture] = useState(false);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferMessage, setTransferMessage] = useState("");
+
+  function transferCardItem(item) {
+    setTransferDraft(item);
+    setTransferDestination("");
+    setTransferFuture(false);
+    setTransferMessage("");
+  }
+
+  async function confirmCardTransfer() {
+    const item = transferDraft;
+    if (!userUid || !item?.id || transferBusy) return;
+    const target = cardsFound.find((name) => name === transferDestination);
     if (!target || normalizeStr(target) === normalizeStr(item.cardName)) {
-      alert("Escolha outro cartão já cadastrado.");
+      setTransferMessage("Escolha outro cartão já cadastrado.");
       return;
     }
     let rows = [item];
-    if (item.installment?.groupId) {
-      const choice = window.prompt("1 - Somente esta parcela\n2 - Esta parcela e as próximas\nDigite 1 ou 2.");
-      if (choice === null) return;
-      if (choice.trim() === "2") rows = items.filter((row) => row.installment?.groupId === item.installment.groupId && Number(row.installment.index) >= Number(item.installment.index) && normalizeStr(row.cardName) === normalizeStr(item.cardName));
-      else if (choice.trim() !== "1") return;
+    if (item.installment?.groupId && transferFuture) {
+      rows = items.filter((row) => row.installment?.groupId === item.installment.groupId && Number(row.installment.index) >= Number(item.installment.index) && normalizeStr(row.cardName) === normalizeStr(item.cardName));
     }
-    if (rows.length > 500) return alert("Muitos registros para uma transferência.");
-    if (!window.confirm(`Transferir ${rows.length} lançamento(s) de ${item.cardName} para ${target}? Valores, datas e pagamentos serão preservados.`)) return;
+    if (rows.length > 500) return setTransferMessage("Muitos registros para uma transferência.");
+    setTransferBusy(true);
     try {
       const batch = writeBatch(db);
       for (const row of rows) batch.update(doc(db, "users", userUid, "transactions", row.id), { cardName: target });
       await batch.commit();
-      alert("Transferência concluída.");
+      setTransferDraft(null);
+      setTransferMessage(`${rows.length} lançamento(s) transferido(s) para ${target}.`);
     } catch (error) {
       console.error(error);
-      alert("Não foi possível transferir. Tente novamente.");
+      setTransferMessage("Não foi possível transferir. Tente novamente.");
+    } finally {
+      setTransferBusy(false);
     }
   }
 
@@ -2111,6 +2123,29 @@ export default function FinanceApp() {
 
   return (
     <div className="app">
+      {transferMessage && !transferDraft && <div role="status" style={{ padding:10, background:"#DCFCE7", color:"#166534" }}>{transferMessage}</div>}
+      {transferDraft && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.45)", zIndex:1000, display:"grid", placeItems:"center", padding:16 }}>
+          <section role="dialog" aria-modal="true" aria-label="Transferir lançamento" style={{ background:"white", borderRadius:8, padding:20, width:"100%", maxWidth:460, display:"grid", gap:12 }}>
+            <strong>Transferir lançamento</strong>
+            <div>{transferDraft.note} · {BRL.format(Number(transferDraft.amount))} · {displayPersonName(transferDraft.personName)}</div>
+            <div>{transferDraft.cardName} · {toVencBR(transferDraft.dueDate)}</div>
+            <label>Cartão de destino
+              <select className="select" aria-label="Cartão de destino" value={transferDestination} disabled={transferBusy} onChange={(e)=>setTransferDestination(e.target.value)}>
+                <option value="">Selecione</option>
+                {cardsFound.filter(name=>normalizeStr(name)!==normalizeStr(transferDraft.cardName)).map(name=><option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+            {transferDraft.installment?.groupId && <label><input type="checkbox" checked={transferFuture} disabled={transferBusy} onChange={(e)=>setTransferFuture(e.target.checked)} /> Incluir próximas parcelas</label>}
+            <div>Valores, datas e pagamentos serão preservados.</div>
+            {transferMessage && <div role="alert">{transferMessage}</div>}
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+              <button className="btn" disabled={transferBusy} onClick={()=>setTransferDraft(null)}>Cancelar</button>
+              <button className="btnPrimary" disabled={transferBusy || !transferDestination} onClick={confirmCardTransfer}>{transferBusy ? "Transferindo..." : "Confirmar transferência"}</button>
+            </div>
+          </section>
+        </div>
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
