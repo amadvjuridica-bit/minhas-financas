@@ -14,6 +14,7 @@ import {
   getDocs,
   where,
   limit,
+  writeBatch,
 } from "firebase/firestore";
 
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
@@ -1457,6 +1458,66 @@ export default function FinanceApp() {
     setInvoiceCheckedUntilDraft(selectedCardSetting?.invoiceCheckedUntil || "");
     setInvoiceNoteDraft(selectedCardSetting?.invoiceNote || "");
   }, [selectedCardTab, isAllCardsSelected, selectedCardDueDay, dueDay, selectedCardSetting]);
+
+  async function renameSelectedCard() {
+    if (!userUid || !selectedCardTab) return;
+    const name = window.prompt("Novo nome do cartão:", selectedCardTab)?.trim();
+    if (!name || name === selectedCardTab) return;
+    if (cardsFound.some((c) => normalizeStr(c) === normalizeStr(name))) {
+      alert("Já existe um cartão com esse nome. Use Transferir para mover lançamentos.");
+      return;
+    }
+    const matches = (row) => normalizeStr(row.cardName) === normalizeStr(selectedCardTab);
+    const transactions = items.filter((row) => row.isCardPurchase && matches(row));
+    const recurring = recurrents.filter(matches);
+    const settings = cardSettings.filter((row) => normalizeStr(row.name) === normalizeStr(selectedCardTab));
+    if (transactions.length + recurring.length + settings.length > 500) {
+      alert("Este cartão possui muitos registros para renomear de uma vez.");
+      return;
+    }
+    if (!window.confirm(`Renomear ${selectedCardTab} para ${name} em ${transactions.length} lançamentos e ${recurring.length} recorrentes?`)) return;
+    try {
+      const batch = writeBatch(db);
+      for (const row of transactions) batch.update(doc(db, "users", userUid, "transactions", row.id), { cardName: name });
+      for (const row of recurring) batch.update(doc(db, "users", userUid, "recurrents", row.id), { cardName: name });
+      for (const row of settings) batch.update(doc(db, "users", userUid, "cardSettings", row.id), { name });
+      await batch.commit();
+      setSelectedCardTab(name);
+      alert("Cartão renomeado com sucesso.");
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível renomear o cartão. Tente novamente.");
+    }
+  }
+
+  async function transferCardItem(item) {
+    if (!userUid || !item?.id) return;
+    const destination = window.prompt(`Transferir para qual cartão?\n${cardsFound.join(" / ")}`)?.trim();
+    if (!destination) return;
+    const target = cardsFound.find((name) => normalizeStr(name) === normalizeStr(destination));
+    if (!target || normalizeStr(target) === normalizeStr(item.cardName)) {
+      alert("Escolha outro cartão já cadastrado.");
+      return;
+    }
+    let rows = [item];
+    if (item.installment?.groupId) {
+      const choice = window.prompt("1 - Somente esta parcela\n2 - Esta parcela e as próximas\nDigite 1 ou 2.");
+      if (choice === null) return;
+      if (choice.trim() === "2") rows = items.filter((row) => row.installment?.groupId === item.installment.groupId && Number(row.installment.index) >= Number(item.installment.index) && normalizeStr(row.cardName) === normalizeStr(item.cardName));
+      else if (choice.trim() !== "1") return;
+    }
+    if (rows.length > 500) return alert("Muitos registros para uma transferência.");
+    if (!window.confirm(`Transferir ${rows.length} lançamento(s) de ${item.cardName} para ${target}? Valores, datas e pagamentos serão preservados.`)) return;
+    try {
+      const batch = writeBatch(db);
+      for (const row of rows) batch.update(doc(db, "users", userUid, "transactions", row.id), { cardName: target });
+      await batch.commit();
+      alert("Transferência concluída.");
+    } catch (error) {
+      console.error(error);
+      alert("Não foi possível transferir. Tente novamente.");
+    }
+  }
 
   async function saveSelectedCardDueDay() {
     if (!userUid || !selectedCardTab || isAllCardsSelected) return;
@@ -3655,6 +3716,7 @@ export default function FinanceApp() {
                       >
                         <div>
                           <div className="label">Vencimento do cartão</div>
+                          <button type="button" className="btn" onClick={renameSelectedCard}>Renomear cartão</button>
                           <div className="hint">
                             Controle compacto da próxima fatura.
                           </div>
@@ -3897,6 +3959,7 @@ export default function FinanceApp() {
                                 <ActionBtn icon="✓" label="Marcar pago" tone="primary" title="Marcar como Pago" onClick={() => togglePaid(it.id, it.paid)} />
                               )}
 
+                              <ActionBtn icon="↔" label="Transferir" title="Transferir para outro cartão" onClick={() => transferCardItem(it)} />
                               <ActionBtn icon="🗑" label="Excluir" tone="danger" title="Excluir" onClick={() => removeCardItem(it)} />
                             </div>
                           </div>
