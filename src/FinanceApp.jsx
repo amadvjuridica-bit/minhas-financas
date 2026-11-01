@@ -24,6 +24,7 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import companyLogo from "./assets/logo.png";
+import { commitUpdatesInBatches } from "./batchUpdates";
 
 /* ===================== HELPERS ===================== */
 
@@ -1459,34 +1460,54 @@ export default function FinanceApp() {
     setInvoiceNoteDraft(selectedCardSetting?.invoiceNote || "");
   }, [selectedCardTab, isAllCardsSelected, selectedCardDueDay, dueDay, selectedCardSetting]);
 
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameStatus, setRenameStatus] = useState("");
+  const renameRecovery = useRef(null);
+
   async function renameSelectedCard() {
-    if (!userUid || !selectedCardTab) return;
+    if (!userUid || !selectedCardTab || isAllCardsSelected || renameBusy) return;
+    const oldName = selectedCardTab;
     const name = window.prompt("Novo nome do cartão:", selectedCardTab)?.trim();
     if (!name || name === selectedCardTab) return;
-    if (cardsFound.some((c) => normalizeStr(c) === normalizeStr(name))) {
+    const resuming = renameRecovery.current?.from === oldName && renameRecovery.current?.to === name;
+    if (!resuming && cardsFound.some((c) => normalizeStr(c) === normalizeStr(name))) {
       alert("Já existe um cartão com esse nome. Use Transferir para mover lançamentos.");
       return;
     }
-    const matches = (row) => normalizeStr(row.cardName) === normalizeStr(selectedCardTab);
-    const transactions = items.filter((row) => row.isCardPurchase && matches(row));
-    const recurring = recurrents.filter(matches);
-    const settings = cardSettings.filter((row) => normalizeStr(row.name) === normalizeStr(selectedCardTab));
-    if (transactions.length + recurring.length + settings.length > 500) {
-      alert("Este cartão possui muitos registros para renomear de uma vez.");
-      return;
-    }
-    if (!window.confirm(`Renomear ${selectedCardTab} para ${name} em ${transactions.length} lançamentos e ${recurring.length} recorrentes?`)) return;
+    if (!window.confirm(`Renomear ${oldName} para ${name} em TODOS os meses, incluindo histórico, parcelas futuras e recorrentes? Valores e datas serão preservados.`)) return;
+    setRenameBusy(true);
+    setRenameStatus("Carregando histórico completo...");
+    let completed = 0;
     try {
-      const batch = writeBatch(db);
-      for (const row of transactions) batch.update(doc(db, "users", userUid, "transactions", row.id), { cardName: name });
-      for (const row of recurring) batch.update(doc(db, "users", userUid, "recurrents", row.id), { cardName: name });
-      for (const row of settings) batch.update(doc(db, "users", userUid, "cardSettings", row.id), { name });
-      await batch.commit();
+      const snapshots = await Promise.all(["transactions", "recurrents", "cardSettings"].map((key) => getDocs(collection(db, "users", userUid, key))));
+      const updates = [];
+      snapshots.forEach((snapshot, index) => {
+        for (const row of snapshot.docs) {
+          const data = row.data();
+          const field = index === 2 ? "name" : "cardName";
+          if (!resuming && normalizeStr(data[field]) === normalizeStr(name) && normalizeStr(name) !== normalizeStr(oldName)) {
+            throw new Error("Já existe outro cartão com o nome escolhido.");
+          }
+          if (normalizeStr(data[field]) !== normalizeStr(oldName)) continue;
+          if (index === 0 && !data.isCardPurchase) continue;
+          updates.push({ ref: row.ref, data: { [field]: name } });
+        }
+      });
+      renameRecovery.current = { from: oldName, to: name };
+      await commitUpdatesInBatches(updates, () => writeBatch(db), (count, total) => {
+        completed = count;
+        setRenameStatus(`Renomeando em todos os meses: ${count} de ${total} registros...`);
+      });
       setSelectedCardTab(name);
-      alert("Cartão renomeado com sucesso.");
+      renameRecovery.current = null;
+      setRenameStatus(`Cartão renomeado em todos os meses. ${completed} registros atualizados.`);
     } catch (error) {
       console.error(error);
-      alert("Não foi possível renomear o cartão. Tente novamente.");
+      setRenameStatus(completed > 0
+        ? `${completed} registros atualizados antes da interrupção. Retome a renomeação do cartão ${oldName} para concluir. Nenhum lançamento foi excluído.`
+        : `Não foi possível renomear: ${error.message || "tente novamente"}`);
+    } finally {
+      setRenameBusy(false);
     }
   }
 
@@ -3755,7 +3776,8 @@ export default function FinanceApp() {
                       >
                         <div>
                           <div className="label">Vencimento do cartão</div>
-                          <button type="button" className="btn" onClick={renameSelectedCard}>Renomear cartão</button>
+                          <button type="button" className="btn" disabled={renameBusy} onClick={renameSelectedCard}>{renameBusy ? "Renomeando..." : "Renomear cartão"}</button>
+                          {renameStatus && <div className="hint" role="status">{renameStatus}</div>}
                           <div className="hint">
                             Controle compacto da próxima fatura.
                           </div>
